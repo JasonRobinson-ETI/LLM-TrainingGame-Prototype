@@ -16,6 +16,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
   const [currentMode, setCurrentMode] = useState(null); // 'asker', 'answerer', or 'challenging'
   const [processedChallenges, setProcessedChallenges] = useState(new Set());
   const [processedLlmKeys, setProcessedLlmKeys] = useState(new Set()); // Deduplicate llm_response events
+  const [isLlmQueryPending, setIsLlmQueryPending] = useState(false); // Track if LLM query is pending
   const previousModeRef = useRef(null); // Track previous mode to detect actual transitions
   const isTypingRef = useRef(false); // Track if user is actively typing to prevent clearing
   const chatContainerRef = useRef(null); // Reference to chat container for auto-scroll
@@ -172,6 +173,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
         setStarredPairs(new Set()); // Clear starred pairs
         // Also clear processed LLM keys so we don't retain stale dedupe entries
         setProcessedLlmKeys(new Set());
+        setIsLlmQueryPending(false); // Clear pending query state
       }
       if (msg.type === 'kicked') {
         // Student has been kicked by the teacher
@@ -192,8 +194,9 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
         if (!processedLlmKeys.has(key)) {
           newLlmKeys.push(key);
           newAiMessages.push({ role: 'assistant', content: msg.response });
-          // AI has responded, stop typing indicator
+          // AI has responded, stop typing indicator and clear pending state
           setIsAiTyping(false);
+          setIsLlmQueryPending(false);
         }
       }
     });
@@ -252,6 +255,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
       setPostGameMode(false);
       setChatHistory([]); // Clear chat history when leaving post-game mode
       setStarredPairs(new Set()); // Clear starred pairs when leaving post-game mode
+      setIsLlmQueryPending(false); // Clear pending query state when leaving post-game mode
     }
   }, [gameState]);
 
@@ -345,6 +349,9 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
       
       // Show typing indicator
       setIsAiTyping(true);
+      
+      // Mark query as pending
+      setIsLlmQueryPending(true);
       
       sendMessage({
         type: 'query_llm',
@@ -938,43 +945,43 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
               />
               <button
                 onClick={queryLLM}
-                disabled={!llmQuery.trim()}
+                disabled={!llmQuery.trim() || isLlmQueryPending}
                 style={{
-                  background: llmQuery.trim() 
+                  background: (llmQuery.trim() && !isLlmQueryPending) 
                     ? 'linear-gradient(135deg, rgba(102, 126, 234, 0.95), rgba(118, 75, 162, 0.95))'
                     : 'rgba(142, 142, 147, 0.2)',
                   backdropFilter: 'blur(20px)',
                   WebkitBackdropFilter: 'blur(20px)',
-                  color: llmQuery.trim() ? 'white' : '#86868b',
+                  color: (llmQuery.trim() && !isLlmQueryPending) ? 'white' : '#86868b',
                   padding: '10px 20px',
                   fontSize: '0.95rem',
                   fontWeight: '600',
-                  border: llmQuery.trim() ? '1px solid rgba(255, 255, 255, 0.7)' : '1px solid rgba(0, 0, 0, 0.1)',
+                  border: (llmQuery.trim() && !isLlmQueryPending) ? '1px solid rgba(255, 255, 255, 0.7)' : '1px solid rgba(0, 0, 0, 0.1)',
                   borderRadius: '12px',
-                  cursor: llmQuery.trim() ? 'pointer' : 'not-allowed',
-                  boxShadow: llmQuery.trim() 
+                  cursor: (llmQuery.trim() && !isLlmQueryPending) ? 'pointer' : 'not-allowed',
+                  boxShadow: (llmQuery.trim() && !isLlmQueryPending) 
                     ? '0 2px 8px rgba(102, 126, 234, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.7)'
                     : 'none',
                   transition: 'all 0.2s',
                   letterSpacing: '-0.01em',
-                  opacity: llmQuery.trim() ? 1 : 0.6,
+                  opacity: (llmQuery.trim() && !isLlmQueryPending) ? 1 : 0.6,
                   whiteSpace: 'nowrap',
                   boxSizing: 'border-box'
                 }}
                 onMouseEnter={(e) => {
-                  if (llmQuery.trim()) {
+                  if (llmQuery.trim() && !isLlmQueryPending) {
                     e.target.style.transform = 'translateY(-1px)';
                     e.target.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.7)';
                   }
                 }}
                 onMouseLeave={(e) => {
                   e.target.style.transform = 'translateY(0)';
-                  e.target.style.boxShadow = llmQuery.trim() 
+                  e.target.style.boxShadow = (llmQuery.trim() && !isLlmQueryPending) 
                     ? '0 2px 8px rgba(102, 126, 234, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.7)'
                     : 'none';
                 }}
               >
-                Send
+                {isLlmQueryPending ? 'Waiting...' : 'Send'}
               </button>
             </div>
           </div>

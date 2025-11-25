@@ -81,7 +81,7 @@ function censorText(input, options = {}) {
     // Unique Slurs
     'higer', 'higger', 'deez nutz', 'deez nuts', 'deezy nutz', 'deezy nuts', 
     '67', 'six seven', '6 seven', 'six 7', 'f them', 'nig', 'kill', 'willy wigger', 
-    'igga', 'niqqa', 'kys', 'niga', 'nosecandy', 'grandwizard', 'noob', 'ni',
+    'igga', 'niqqa', 'kys', 'niga', 'nosecandy', 'grandwizard', 'noob',
     'boing', 'twinknocker', 'crotch', 'wap'
   ]).map(w => w.toLowerCase());
 

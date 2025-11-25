@@ -60,6 +60,7 @@ let lastChallengeTime = 0; // Track when last challenge was sent
 let lastChallengeTypes = new Map(); // Track last challenge type per client
 let activeQuestions = new Map(); // Track which question is assigned to each client
 let askedQuestions = new Set(); // Track which questions have been asked to avoid repeats
+let activeLLMQueries = new Map(); // Track clients with pending LLM queries
 
 // Question prompts - asking "Who..." questions where the answer is a person's name
 // This helps the AI learn to associate people with traits and characteristics
@@ -162,6 +163,7 @@ wss.on('connection', (ws) => {
       // Clear any active question tracking for this client
       activeQuestions.delete(clientId);
       lastChallengeTypes.delete(clientId);
+      activeLLMQueries.delete(clientId); // Clear pending LLM queries
       broadcast({ type: 'clients_update', clients: gameState.clients });
     }
   });
@@ -325,6 +327,9 @@ function resetKnowledge() {
   // Reset asked questions tracking so questions can be reused
   askedQuestions.clear();
   
+  // Reset active LLM queries
+  activeLLMQueries.clear();
+  
   // Reset all student modes and stats, put them in waiting state
   Object.keys(gameState.clients).forEach(clientId => {
     const client = gameState.clients[clientId];
@@ -476,12 +481,15 @@ function sendQuestion(clientId) {
 function handleSuggestedQuestionAccepted(clientId, questionText, questionType) {
   const client = gameState.clients[clientId];
   
-  // Validate client exists and is in asker mode
+  // Validate client exists
   if (!client) {
     console.error('handleSuggestedQuestionAccepted: Client not found:', clientId);
     return;
   }
   
+  // REMOVED: Check for unanswered questions - students can now ask multiple questions
+  
+  // SECOND: Check if client is in asker mode
   if (client.currentMode !== 'asker') {
     console.log(`[REJECT] Suggested question from ${clientId} - not in asker mode (current: ${client.currentMode})`);
     return;
@@ -586,10 +594,16 @@ function sendQuestionToAnswer(clientId) {
 async function handleQuestionSubmission(clientId, customQuestion) {
   const client = gameState.clients[clientId];
   
-  // Allow submission if:
-  // - Client is in asker mode, OR
-  // - Client is in answerer mode but currently has no active question assigned (i.e., waiting)
-  if (!client || !(
+  // Validate client exists
+  if (!client) {
+    console.error('handleQuestionSubmission: Client not found:', clientId);
+    return;
+  }
+  
+  // REMOVED: Check for unanswered questions - students can now ask multiple questions
+  
+  // SECOND: Check if client is in a mode that allows asking questions
+  if (!(
       client.currentMode === 'asker' ||
       (client.currentMode === 'answerer' && !activeQuestions.has(clientId))
     )) {
@@ -1027,32 +1041,35 @@ function handleChallengeCompleted(clientId, challengeId, success) {
 // Filtering removed: no mask functions; payloads are sent as-is
 
 async function handleLLMQuery(clientId, question) {
-  // Check if game is active before processing query
-  if (!gameState.isActive) {
-    console.log('[LLM Query] Rejected - game is not active');
+  // Check if this client already has a pending LLM query
+  if (activeLLMQueries.has(clientId)) {
+    console.log(`[LLM Query] Rejected - client ${clientId} already has a pending query`);
     sendToClient(clientId, {
       type: 'llm_response',
       question: question,
-      response: "The game is not currently active. Please wait for the teacher to start the game.",
+      response: "Please wait for your previous question to be answered before asking another one.",
       timestamp: Date.now()
     });
     return;
   }
 
+  // Mark this client as having a pending query
+  activeLLMQueries.set(clientId, true);
+
   try {
     // Censor the question before sending to LLM
     const censoredQuestion = censorText(question);
-    
+
     // Filter out corrupted data - only use real user Q&A for queries
     const cleanTrainingData = gameState.trainingData.filter(d => d.type !== 'corrupted');
-    
+
     // Generate response using the actual LLM with ONLY clean training data as context
     const response = await llmService.generateResponse(
       censoredQuestion,
       cleanTrainingData,  // Only real user Q&A, no corrupted data
       gameState.llmKnowledge.map(k => `${k.q}: ${k.a}`)
     );
-    
+
     sendToClient(clientId, {
       type: 'llm_response',
       question: censoredQuestion,
@@ -1067,6 +1084,9 @@ async function handleLLMQuery(clientId, question) {
       response: "I'm still learning. Please ask me again later!",
       timestamp: Date.now()
     });
+  } finally {
+    // Remove the pending query mark
+    activeLLMQueries.delete(clientId);
   }
 }
 

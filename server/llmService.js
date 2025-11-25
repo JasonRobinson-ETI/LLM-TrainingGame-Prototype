@@ -13,7 +13,7 @@ class LLMService {
       return base.replace(/\/$/, '');
     };
 
-    const manualHosts = ['localhost',];
+    const manualHosts = ['192.168.1.54' ,];
     const manualBases = manualHosts.map(h => normalizeBase(h)).filter(Boolean);
     const envHosts = process.env.OLLAMA_HOSTS
       ? process.env.OLLAMA_HOSTS.split(',').map(h => normalizeBase(h)).filter(Boolean)
@@ -34,17 +34,14 @@ class LLMService {
     this.initializationPromise = null;
 
     // Initialize per-device queues and busy flags
-    // First device in the list is the priority device
     this.deviceQueues = {};
     this.deviceBusy = {};
     this.ollamaBases.forEach(base => {
       this.deviceQueues[base] = [];
       this.deviceBusy[base] = false;
     });
-    
-    if (this.ollamaBases.length > 0) {
-      console.log('[LLM] Priority device (will be used first):', this.ollamaBases[0]);
-    }
+    // Track last used device for round-robin
+    this.lastDeviceIndex = -1;
   }
 
   async initialize() {
@@ -142,37 +139,17 @@ class LLMService {
   async generateResponse(question, trainingData = [], llmKnowledge = []) {
     return new Promise((resolve) => {
       const request = { question, trainingData, llmKnowledge, resolve };
-      
-      // Always try to use the first device (priority device)
-      const priorityBase = this.ollamaBases[0];
-      
-      // If priority device is available (not busy), assign to it
-      if (!this.deviceBusy[priorityBase]) {
-        console.log('[LLM] Assigning request to priority device:', priorityBase);
-        this.deviceQueues[priorityBase].push(request);
-        this.processDeviceQueue(priorityBase);
-      } else {
-        // Priority device is busy, check if there are other available devices
-        const availableBase = this.findAvailableDevice();
-        if (availableBase) {
-          console.log('[LLM] Priority device busy, using available device:', availableBase);
-          this.deviceQueues[availableBase].push(request);
-          this.processDeviceQueue(availableBase);
-        } else {
-          // All devices busy, add to priority device's queue
-          console.log('[LLM] All devices busy, queuing on priority device:', priorityBase);
-          this.deviceQueues[priorityBase].push(request);
-        }
-      }
+      // Round-robin device selection
+      this.lastDeviceIndex = (this.lastDeviceIndex + 1) % this.ollamaBases.length;
+      const selectedBase = this.ollamaBases[this.lastDeviceIndex];
+      console.log('[LLM] Assigning request to device (round-robin):', selectedBase);
+      this.deviceQueues[selectedBase].push(request);
+      this.processDeviceQueue(selectedBase);
     });
   }
 
   findAvailableDevice() {
-    // Start from index 1 (skip priority device at index 0, as it's checked separately)
-    for (let i = 1; i < this.ollamaBases.length; i++) {
-      const base = this.ollamaBases[i];
-      if (!this.deviceBusy[base]) return base;
-    }
+    // Deprecated in round-robin mode
     return null;
   }
 
