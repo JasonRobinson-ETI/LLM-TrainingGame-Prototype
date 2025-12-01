@@ -13,7 +13,7 @@ class LLMService {
       return base.replace(/\/$/, '');
     };
 
-    const manualHosts = ['192.168.1.54' ,];
+    const manualHosts = ['192.168.1.54'];
     const manualBases = manualHosts.map(h => normalizeBase(h)).filter(Boolean);
     const envHosts = process.env.OLLAMA_HOSTS
       ? process.env.OLLAMA_HOSTS.split(',').map(h => normalizeBase(h)).filter(Boolean)
@@ -57,7 +57,7 @@ class LLMService {
           if (response.ok) {
             this.isInitialized = true;
             console.log('[LLM] Ollama is ready at', base, 'model:', this.modelName);
-            console.log('[LLM] Using Ollama (CPU/GPU auto; GPU not required).');
+            console.log('[LLM] Using Ollama with GPU acceleration enabled.');
             return;
           }
         } catch (err) {
@@ -199,7 +199,7 @@ class LLMService {
         return res;
       };
 
-      const options = { temperature: 0.7, num_predict: 50, stop: ['\n', 'Question:', '?'], num_gpu: 0 };
+      const options = { temperature: 0.7, num_predict: 50, stop: ['\n', 'Question:', '?'], num_gpu: 99 };
 
       let response = await tryRequest('/api/generate', { model: this.modelName, prompt, stream: false, options });
 
