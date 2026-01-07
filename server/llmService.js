@@ -1,3 +1,5 @@
+import si from 'systeminformation';
+
 class LLMService {
   constructor() {
     this.useOllama = true;
@@ -13,12 +15,26 @@ class LLMService {
       return base.replace(/\/$/, '');
     };
 
-    const manualHosts = ['localhost'];
-    const manualBases = manualHosts.map(h => normalizeBase(h)).filter(Boolean);
-    const envHosts = process.env.OLLAMA_HOSTS
-      ? process.env.OLLAMA_HOSTS.split(',').map(h => normalizeBase(h)).filter(Boolean)
-      : (process.env.OLLAMA_HOST ? [normalizeBase(process.env.OLLAMA_HOST)] : []);
-    this.ollamaBases = manualBases.length > 0 ? manualBases : (envHosts.length > 0 ? envHosts : [normalizeBase('localhost:11434')]);
+    const manualHosts = ['192.168.1.68', '192.168.68.25'];
+    
+    // Combine manual, env, and local hosts into a unique set
+    const bases = new Set();
+    
+    // 1. Add manual hosts
+    manualHosts.forEach(h => { if(h) bases.add(normalizeBase(h)) });
+
+    // 2. Add env hosts
+    if (process.env.OLLAMA_HOSTS) {
+      process.env.OLLAMA_HOSTS.split(',').forEach(h => { if(h) bases.add(normalizeBase(h)) });
+    } else if (process.env.OLLAMA_HOST) {
+      bases.add(normalizeBase(process.env.OLLAMA_HOST));
+    }
+
+    // 3. Always ensure localhost is included for benchmarking
+    bases.add(normalizeBase('127.0.0.1'));
+    bases.add(normalizeBase('localhost'));
+
+    this.ollamaBases = Array.from(bases).filter(Boolean);
     console.log('[LLM] Ollama bases:', this.ollamaBases.join(', '));
     console.log('[LLM] OLLAMA_REQUIRED:', this.requireOllama);
 
@@ -36,34 +52,94 @@ class LLMService {
     // Initialize per-device queues and busy flags
     this.deviceQueues = {};
     this.deviceBusy = {};
+    this.devicePerformance = {}; // Track TPS for each device
     this.ollamaBases.forEach(base => {
       this.deviceQueues[base] = [];
       this.deviceBusy[base] = false;
+      this.devicePerformance[base] = { tps: 0, model: 'unknown' };
     });
     // Track last used device for round-robin
     this.lastDeviceIndex = -1;
   }
 
+  async getHardwareInfo() {
+    try {
+      console.log('[LLM] Detecting local hardware...');
+      const gpuData = await si.graphics();
+      if (gpuData.controllers.length > 0) {
+        console.log('[LLM] Detected GPUs/MPUs:');
+        gpuData.controllers.forEach((ctrl, idx) => {
+          console.log(`  ${idx + 1}. ${ctrl.model} (VRAM: ${ctrl.vram}MB)`);
+        });
+      }
+      const cpu = await si.cpu();
+      console.log(`[LLM] CPU: ${cpu.manufacturer} ${cpu.brand} (${cpu.cores} cores)`);
+    } catch (err) {
+      console.warn('[LLM] Hardware detection failed:', err.message);
+    }
+  }
+
+  async benchmarkDevice(base) {
+    console.log(`[LLM] Benchmarking device: ${base}...`);
+    try {
+      const res = await fetch(`${base}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: this.modelName,
+          prompt: "Verify 1+1",
+          stream: false,
+          options: { num_predict: 10, temperature: 0 }
+        }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      
+      // Calculate TPS
+      // eval_duration is in nanoseconds. eval_count is token count.
+      const durationSec = data.eval_duration ? (data.eval_duration / 1e9) : 1;
+      const tps = data.eval_count ? (data.eval_count / durationSec) : 0;
+      
+      this.devicePerformance[base].tps = tps;
+      console.log(`[LLM] Result ${base}: ${tps.toFixed(2)} TPS`);
+      return tps;
+    } catch (err) {
+      console.warn(`[LLM] Benchmark failed for ${base}: ${err.message}`);
+      this.devicePerformance[base].tps = 0;
+      return 0;
+    }
+  }
+
   async initialize() {
     if (this.isInitialized) return;
 
+    await this.getHardwareInfo();
+
     if (this.useOllama) {
-      const basesToTry = [...this.ollamaBases];
-      for (let i = 0; i < basesToTry.length; i++) {
-        const base = basesToTry[i];
-        try {
-          console.log('[LLM] Checking Ollama connection at', base);
-          const response = await fetch(`${base}/api/tags`, { method: 'GET' });
-          if (response.ok) {
-            this.isInitialized = true;
-            console.log('[LLM] Ollama is ready at', base, 'model:', this.modelName);
-            console.log('[LLM] Using Ollama with GPU acceleration enabled.');
-            return;
-          }
-        } catch (err) {
-          console.warn('[LLM] Ollama not reachable at', base, '-', err.message);
-        }
+      console.log('[LLM] Benchmarking all configured devices...');
+      const benchmarks = this.ollamaBases.map(base => this.benchmarkDevice(base));
+      await Promise.all(benchmarks);
+
+      // Sort ollamaBases by TPS descending
+      this.ollamaBases.sort((a, b) => {
+        return this.devicePerformance[b].tps - this.devicePerformance[a].tps;
+      });
+
+      console.log('[LLM] Device Priority Ranking (Efficiency):');
+      this.ollamaBases.forEach((base, idx) => {
+        const perf = this.devicePerformance[base];
+        console.log(`  ${idx + 1}. ${base} - ${perf.tps.toFixed(2)} TPS`);
+      });
+
+      // Verification: Check if at least one works
+      const activeBases = this.ollamaBases.filter(b => this.devicePerformance[b].tps > 0);
+      if (activeBases.length > 0) {
+        this.isInitialized = true;
+        console.log(`[LLM] Initialization complete. ${activeBases.length} active devices ready.`);
+        return;
       }
+
       if (this.requireOllama) {
         console.error('[LLM] No Ollama endpoints reachable and OLLAMA_REQUIRED is true.');
         throw new Error('Ollama required but no endpoints reachable');
@@ -139,10 +215,35 @@ class LLMService {
   async generateResponse(question, trainingData = [], llmKnowledge = []) {
     return new Promise((resolve) => {
       const request = { question, trainingData, llmKnowledge, resolve };
-      // Round-robin device selection
-      this.lastDeviceIndex = (this.lastDeviceIndex + 1) % this.ollamaBases.length;
-      const selectedBase = this.ollamaBases[this.lastDeviceIndex];
-      console.log('[LLM] Assigning request to device (round-robin):', selectedBase);
+      
+      // Smart Routing: Prefer fastest idle device
+      let selectedBase = null;
+      
+      // 1. Try to find the highest-ranked idle device
+      for (const base of this.ollamaBases) {
+        if (!this.deviceBusy[base]) {
+          selectedBase = base;
+          break;
+        }
+      }
+      
+      // 2. If all busy, pick the one with the shortest queue (load balancing)
+      //    Tie-breaker goes to the one appearing earlier in the sorted list (higher TPS)
+      if (!selectedBase) {
+        let minQueue = Infinity;
+        for (const base of this.ollamaBases) {
+          if (this.deviceQueues[base].length < minQueue) {
+            minQueue = this.deviceQueues[base].length;
+            selectedBase = base;
+          }
+        }
+      }
+      
+      // Fallback
+      if (!selectedBase) selectedBase = this.ollamaBases[0];
+
+      const tps = this.devicePerformance[selectedBase]?.tps.toFixed(1) || '?';
+      console.log(`[LLM] Assigning request to ${selectedBase} (TPS: ${tps})`);
       this.deviceQueues[selectedBase].push(request);
       this.processDeviceQueue(selectedBase);
     });
