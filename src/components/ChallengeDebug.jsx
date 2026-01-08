@@ -10,6 +10,20 @@ import HallucinationHunterChallenge from './challenges/HallucinationHunterChalle
 import VersionChaosChallenge from './challenges/VersionChaosChallenge';
 import EthicsEngineChallenge from './challenges/EthicsEngineChallenge';
 
+const CHALLENGE_THEMES = {
+  denoise: 'linear-gradient(135deg, #1e293b 0%, #4338ca 100%)',
+  attention: 'linear-gradient(135deg, #1e293b 0%, #b91c1c 100%)',
+  neuroburst: 'linear-gradient(135deg, #1e293b 0%, #b45309 100%)',
+  clusterrush: 'linear-gradient(135deg, #1e293b 0%, #15803d 100%)',
+  contextcache: 'linear-gradient(135deg, #1e293b 0%, #be185d 100%)',
+  wordsplitter: 'linear-gradient(135deg, #1e293b 0%, #0e7490 100%)',
+  biasbreaker: 'linear-gradient(135deg, #1e293b 0%, #b45309 100%)',
+  hallucinationhunter: 'linear-gradient(135deg, #1e293b 0%, #6d28d9 100%)',
+  versionchaos: 'linear-gradient(135deg, #1e293b 0%, #c2410c 100%)',
+  ethicsengine: 'linear-gradient(135deg, #1e293b 0%, #1d4ed8 100%)',
+  default: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)'
+};
+
 const ChallengeDebug = () => {
   const [selectedChallenge, setSelectedChallenge] = useState(null);
   const [result, setResult] = useState(null);
@@ -253,48 +267,73 @@ const ChallengeDebug = () => {
   if (selectedChallenge) {
     const ChallengeComponent = selectedChallenge.component;
     const challengeData = generateChallengeData(selectedChallenge.type);
+    const theme = CHALLENGE_THEMES[selectedChallenge.type] || CHALLENGE_THEMES.default;
 
     return (
       <div style={{
-        minHeight: '100vh',
-        height: 'auto',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.8)',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1000,
         padding: '20px',
-        overflow: 'auto',
-        WebkitOverflowScrolling: 'touch'
+        overflowY: 'auto'
       }}>
         <div style={{
-          maxWidth: '800px',
-          margin: '0 auto'
+          maxWidth: '600px',
+          width: '100%',
+          background: theme,
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          color: 'white',
+          position: 'relative',
+          maxHeight: '95vh',
+          overflowY: 'auto',
+          borderRadius: '16px',
         }}>
-          <button
+          <div style={{
+            background: 'rgba(0, 0, 0, 0.2)',
+            color: 'white',
+            padding: 'clamp(12px, 3vw, 16px)',
+            borderRadius: '8px',
+            margin: 'clamp(12px, 3vw, 20px)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
+            <h2 style={{ 
+              margin: 0,
+              fontSize: 'clamp(1rem, 4vw, 1.5rem)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }}>⚡ CHALLENGE DEBUG</h2>
+            <button
             onClick={() => setSelectedChallenge(null)}
             style={{
-              background: 'rgba(255, 255, 255, 0.3)',
-              color: '#1d1d1f',
-              border: '2px solid white',
-              padding: '10px 20px',
+              background: 'rgba(255, 255, 255, 0.2)',
+              color: 'white',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
+              padding: '8px 16px',
               borderRadius: '8px',
               cursor: 'pointer',
               fontWeight: 'bold',
-              marginBottom: '20px',
-              fontSize: '1rem'
+              fontSize: '0.9rem'
             }}
           >
-            ← Back to Challenge List
+            ← Back
           </button>
-
-          <div style={{
-            background: 'rgba(255, 255, 255, 0.95)',
-            borderRadius: '12px',
-            padding: '20px',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
-          }}>
-            <ChallengeComponent 
-              challenge={challengeData}
-              onComplete={handleChallengeComplete}
-            />
           </div>
+
+          <ChallengeComponent 
+            challenge={challengeData}
+            onComplete={handleChallengeComplete}
+          />
 
           {result !== null && (
             <div style={{

@@ -91,7 +91,7 @@ function App() {
             fontWeight: '700',
             letterSpacing: '-0.02em'
           }}>
-            Join the AI Training
+            Make your own AI
           </h1>
           <p style={{
             textAlign: 'center',
@@ -99,7 +99,7 @@ function App() {
             marginBottom: '32px',
             fontSize: '1.1rem'
           }}>
-            Enter your name to start building AI knowledge!
+            You'll ask questions and answer questions, and discover some of the challenges behind making AI!
           </p>
           <form onSubmit={(e) => {
             e.preventDefault();
@@ -153,7 +153,8 @@ function App() {
                 cursor: clientName.trim() ? 'pointer' : 'not-allowed',
                 fontWeight: '700',
                 boxShadow: clientName.trim() ? '0 4px 16px rgba(79, 172, 254, 0.3)' : 'none',
-                transition: 'all 0.3s ease'
+                transition: 'all 0.3s ease',
+                marginBottom: '16px'
               }}
               onMouseEnter={(e) => {
                 if (clientName.trim()) {
@@ -168,6 +169,36 @@ function App() {
             >
               JOIN GAME →
             </button>
+
+            <button
+              type="button"
+              onClick={() => window.location.href = '/debug-challenges'}
+              className="slide-in-right"
+              style={{
+                width: '100%',
+                background:'linear-gradient(135deg, #ec4ffeff 0%, #fec700ff 100%)',
+                color: '#1d1d1f',
+                padding: '18px',
+                fontSize: '1.2rem',
+                border: 'none',
+                borderRadius: '12px',
+                cursor:'pointer',
+                fontWeight: '700',
+                boxShadow: '0 4px 16px rgba(79, 172, 254, 0.3)',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.transform = 'translateY(-3px)';
+                e.target.style.boxShadow = '0 8px 24px rgba(79, 172, 254, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow ='0 4px 16px rgba(79, 172, 254, 0.3)';
+              }}
+            >
+              View Specific Challenges
+            </button>
+
           </form>
         </div>
       </div>

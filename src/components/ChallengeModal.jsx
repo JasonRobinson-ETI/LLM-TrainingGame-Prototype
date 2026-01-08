@@ -10,9 +10,25 @@ import HallucinationHunterChallenge from './challenges/HallucinationHunterChalle
 import VersionChaosChallenge from './challenges/VersionChaosChallenge';
 import EthicsEngineChallenge from './challenges/EthicsEngineChallenge';
 
+const CHALLENGE_THEMES = {
+  denoise: 'linear-gradient(135deg, #1e293b 0%, #4338ca 100%)',
+  attention: 'linear-gradient(135deg, #1e293b 0%, #b91c1c 100%)',
+  neuroburst: 'linear-gradient(135deg, #1e293b 0%, #b45309 100%)',
+  clusterrush: 'linear-gradient(135deg, #1e293b 0%, #15803d 100%)',
+  contextcache: 'linear-gradient(135deg, #1e293b 0%, #be185d 100%)',
+  wordsplitter: 'linear-gradient(135deg, #1e293b 0%, #0e7490 100%)',
+  biasbreaker: 'linear-gradient(135deg, #1e293b 0%, #b45309 100%)',
+  hallucinationhunter: 'linear-gradient(135deg, #1e293b 0%, #6d28d9 100%)',
+  versionchaos: 'linear-gradient(135deg, #1e293b 0%, #c2410c 100%)',
+  ethicsengine: 'linear-gradient(135deg, #1e293b 0%, #1d4ed8 100%)',
+  default: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)'
+};
+
 const ChallengeModal = ({ challenge, onComplete }) => {
   const [timeLeft, setTimeLeft] = useState(challenge.timeLimit / 1000);
   const [completed, setCompleted] = useState(false);
+  
+  const theme = CHALLENGE_THEMES[challenge.type] || CHALLENGE_THEMES.default;
 
   useEffect(() => {
     if (completed) return; // Don't run timer if already completed
@@ -90,7 +106,9 @@ const ChallengeModal = ({ challenge, onComplete }) => {
       <div className="card shake" style={{
         maxWidth: '600px',
         width: '100%',
-        background: 'rgba(255, 255, 255, 0.7)',
+        background: theme,
+        border: '1px solid rgba(255, 255, 255, 0.1)',
+        color: 'white',
         position: 'relative',
         maxHeight: '95vh',
         overflowY: 'auto'
@@ -98,8 +116,8 @@ const ChallengeModal = ({ challenge, onComplete }) => {
         <div style={{
           background: timeLeft <= 10 
             ? 'linear-gradient(135deg, #ee0979 0%, #ff6a00 100%)'
-            : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          color: '#1d1d1f',
+            : 'rgba(0, 0, 0, 0.2)',
+          color: 'white',
           padding: 'clamp(12px, 3vw, 16px)',
           borderRadius: '8px',
           marginBottom: 'clamp(12px, 3vw, 20px)',
