@@ -40,18 +40,29 @@ class LoadBalancer {
 
   /**
    * Calculate max queue capacity based on TPS
+   * Uses adaptive multipliers: fast machines can queue more aggressively
    * @param {number} tps - Tokens per second for the device
    * @returns {number} Max number of people allowed in queue
    */
   calculateCapacity(tps) {
     if (tps <= 0) return 0;
-    return Math.max(1, Math.floor(tps / this.tpsPerPerson));
+    
+    // Adaptive multipliers based on TPS performance
+    // Fast machines (>400 TPS) can queue 2x more aggressively
+    // Medium-fast machines (>200 TPS) can queue 1.5x more
+    // Slow machines (<50 TPS) queue conservatively at 0.5x
+    let multiplier = 1.0;
+    if (tps >= 400) multiplier = 2.0;      // Ultra-fast: Double capacity
+    else if (tps >= 200) multiplier = 1.5; // Fast: 50% more capacity
+    else if (tps < 50) multiplier = 0.5;   // Slow: Half capacity
+    
+    const baseCapacity = tps / this.tpsPerPerson;
+    return Math.max(1, Math.floor(baseCapacity * multiplier));
   }
 
   /**
-   * Get dynamic max concurrent requests for a device based on its TPS
-   * Devices below 50 TPS handle 1 request at a time
-   * Devices at 50+ TPS handle 2 concurrent requests
+   * Get dynamic max concurrent requests for a device based on its TPS and real performance
+   * Adapts concurrency based on both speed (TPS) and actual completion times
    * @param {string} base - Device base URL
    * @returns {number} Max concurrent requests allowed for this device
    */
@@ -59,8 +70,20 @@ class LoadBalancer {
     const tps = this.deviceTPS[base] || 0;
     if (tps <= 0) return 1; // Minimum 1 for offline/unknown devices
     
-    // Simple threshold: < 50 TPS = 1 concurrent, >= 50 TPS = 2 concurrent
-    return tps < 50 ? 1 : 2;
+    // Use actual completion times to determine optimal concurrency
+    const avgCompletionMs = this.getAvgCompletionTime(base);
+    
+    // Ultra-fast machines (400+ TPS, <2s completion) can handle 4 concurrent
+    if (tps >= 400 && avgCompletionMs < 2000) return 4;
+    
+    // Fast machines (200+ TPS, <3s completion) can handle 3 concurrent
+    if (tps >= 200 && avgCompletionMs < 3000) return 3;
+    
+    // Medium machines (100+ TPS, <5s completion) can handle 2 concurrent
+    if (tps >= 100 && avgCompletionMs < 5000) return 2;
+    
+    // Slow machines get 1 concurrent request
+    return 1;
   }
 
   /**
