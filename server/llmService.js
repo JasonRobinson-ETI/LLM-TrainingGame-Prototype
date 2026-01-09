@@ -50,6 +50,9 @@ class LLMService {
 
     this.generator = null;
     this.isInitialized = false;
+    this.healthCheckInterval = null; // Interval for checking offline devices
+    this.healthCheckInterval = null; // Interval for checking offline devices
+    this.healthCheckInterval = null; // Interval for checking offline devices
     this.initializationPromise = null;
     this.hasMetalAcceleration = false; // Detected during hardware info
     this.localHardwareInfo = null; // Store local hardware detection results
@@ -243,6 +246,9 @@ class LLMService {
           this.deviceQueues,
           (base) => this.processDeviceQueue(base)
         );
+        
+        // Start health check for offline devices
+        this.startHealthCheck();
         
         return;
       }
@@ -792,6 +798,97 @@ class LLMService {
       newModel: newModelName,
       devicePerformance: this.devicePerformance
     };
+  }
+
+  /**
+   * Start periodic health check to reconnect offline devices
+   */
+  startHealthCheck() {
+    // Check every 30 seconds
+    const CHECK_INTERVAL = 30000;
+    
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+    }
+    
+    console.log('[LLM] Starting health check for offline devices (every 30s)');
+    
+    this.healthCheckInterval = setInterval(async () => {
+      await this.checkOfflineDevices();
+    }, CHECK_INTERVAL);
+  }
+
+  /**
+   * Stop the health check interval
+   */
+  stopHealthCheck() {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+      console.log('[LLM] Health check stopped');
+    }
+  }
+
+  /**
+   * Check all offline devices and attempt to reconnect them
+   */
+  async checkOfflineDevices() {
+    const offlineDevices = this.ollamaBases.filter(base => !this.loadBalancer.isOnline(base));
+    
+    if (offlineDevices.length === 0) {
+      return; // All devices are online
+    }
+    
+    console.log(`[LLM] Health check: Testing ${offlineDevices.length} offline device(s)...`);
+    
+    for (const base of offlineDevices) {
+      try {
+        // Quick health check - just ping the API
+        const isResponsive = await this.pingDevice(base);
+        
+        if (isResponsive) {
+          console.log(`[LLM] Device ${base} is responsive! Re-benchmarking...`);
+          
+          // Re-benchmark the device
+          const tps = await this.benchmarkDevice(base);
+          
+          if (tps > 0) {
+            // Mark device as online in load balancer
+            this.loadBalancer.markOnline(base, tps);
+            
+            // Update device metrics
+            const deviceMetrics = this.ollamaBases.map(b => ({
+              base: b,
+              tps: this.devicePerformance[b].tps
+            }));
+            this.loadBalancer.updateDeviceMetrics(deviceMetrics);
+            
+            console.log(`[LLM] ✓ Device ${base} reconnected and added back to load balancer (${tps.toFixed(2)} TPS)`);
+          }
+        }
+      } catch (error) {
+        // Still offline, check again next interval
+        console.log(`[LLM] Device ${base} still offline`);
+      }
+    }
+  }
+
+  /**
+   * Quick ping to check if a device is responsive
+   * @param {string} base - Device base URL
+   * @returns {Promise<boolean>} True if device responds
+   */
+  async pingDevice(base) {
+    try {
+      const response = await fetch(`${base}/api/tags`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000) // 3 second timeout
+      });
+      
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
   }
 }
 
