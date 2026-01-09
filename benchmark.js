@@ -575,7 +575,7 @@ async function runBenchmark() {
         broadcastToVisualizer({ type: 'devices', ...data });
       })
       .catch(err => console.error('[VISUALIZER] Failed to fetch device info:', err.message));
-  }, 5000); // Every 5 seconds
+  }, 2000); // Every 2 seconds for real-time TPS updates
   
   await new Promise(resolve => setTimeout(resolve, TRAINING_DURATION));
   clearInterval(memoryInterval);
@@ -623,7 +623,7 @@ async function runBenchmark() {
   console.log(`\n[WAITING] Submitted ${llmQueriesSubmitted.size} queries. Waiting for all responses...\n`);
   
   // Wait indefinitely until all responses are received
-  const checkInterval = 5000; // Check every 5 seconds
+  const checkInterval = 2000; // Check every 2 seconds for more real-time updates
   let elapsed = 0;
   
   while (stats.llmResponsesReceived < llmQueriesSubmitted.size) {

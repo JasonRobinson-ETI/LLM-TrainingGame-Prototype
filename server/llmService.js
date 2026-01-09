@@ -423,6 +423,9 @@ class LLMService {
       this.devicePerformance[base].tps = 0;
       this.devicePerformance[base].acceleration = 'offline';
       
+      // Redistribute queue to other devices before marking offline
+      this.redistributeQueue(base);
+      
       // Always resolve with fallback message instead of rejecting to maintain stability
       resolve("I'm still learning. Please ask me again later!");
     } finally {
@@ -516,6 +519,9 @@ class LLMService {
           const durationSec = data.eval_duration / 1e9;
           const actualTPS = data.eval_count / durationSec;
           this.loadBalancer.updateDeviceTPS(base, actualTPS);
+          
+          // Sync updated TPS back to devicePerformance for API visibility
+          this.devicePerformance[base].tps = this.loadBalancer.deviceTPS[base];
         }
       }
       
@@ -645,6 +651,70 @@ class LLMService {
    */
   getRebalanceStats() {
     return this.loadBalancer.getRebalanceStats(this.deviceQueues);
+  }
+
+  /**
+   * Redistribute pending queue items from a failed device to other available devices
+   * @param {string} failedBase - The device base URL that went offline
+   */
+  redistributeQueue(failedBase) {
+    const queue = this.deviceQueues[failedBase];
+    
+    if (!queue || queue.length === 0) {
+      return; // Nothing to redistribute
+    }
+    
+    const onlineDevices = this.loadBalancer.getOnlineDevices();
+    
+    if (onlineDevices.length === 0) {
+      console.warn(`[LLM] Cannot redistribute ${queue.length} requests - no online devices available`);
+      // Reject all pending requests since no devices are available
+      queue.forEach(request => {
+        if (request.resolve) {
+          request.resolve("I'm experiencing technical difficulties. Please try again later.");
+        }
+      });
+      queue.length = 0; // Clear the queue
+      return;
+    }
+    
+    const itemsToRedistribute = [...queue];
+    queue.length = 0; // Clear the original queue
+    
+    console.log(`[LLM] Redistributing ${itemsToRedistribute.length} requests from ${failedBase} to ${onlineDevices.length} available devices`);
+    
+    // Redistribute each request using the load balancer
+    itemsToRedistribute.forEach(request => {
+      const selectedBase = this.loadBalancer.selectBestDevice(
+        this.deviceQueues,
+        this.deviceBusy,
+        request.question
+      );
+      
+      if (selectedBase) {
+        this.deviceQueues[selectedBase].push(request);
+        console.log(`[LLM] Redirected request to ${selectedBase} (queue: ${this.deviceQueues[selectedBase].length})`);
+        // Trigger processing on the new device
+        setImmediate(() => this.processDeviceQueue(selectedBase));
+      } else {
+        // Fallback: distribute to device with shortest queue
+        let minQueueBase = onlineDevices[0];
+        let minQueueSize = this.deviceQueues[minQueueBase].length;
+        
+        for (const base of onlineDevices) {
+          if (this.deviceQueues[base].length < minQueueSize) {
+            minQueueSize = this.deviceQueues[base].length;
+            minQueueBase = base;
+          }
+        }
+        
+        this.deviceQueues[minQueueBase].push(request);
+        console.log(`[LLM] Redirected request to ${minQueueBase} (fallback, queue: ${this.deviceQueues[minQueueBase].length})`);
+        setImmediate(() => this.processDeviceQueue(minQueueBase));
+      }
+    });
+    
+    console.log(`[LLM] Queue redistribution complete`);
   }
 
   /**

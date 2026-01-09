@@ -322,6 +322,12 @@
       color: #4ade80;
     }
     
+    @keyframes tpsPulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); color: #fbbf24; }
+      100% { transform: scale(1); color: #4ade80; }
+    }
+
     .device-queue {
       display: flex;
       align-items: center;
@@ -677,15 +683,21 @@
         }
         
         const queuePercent = Math.min(100, (device.queueSize / 20) * 100);
+        const onlineStatus = device.online === false ? '🔴 Offline' : '🟢 Online';
+        const maxConcurrent = device.maxConcurrent || 1;
+        const capacity = device.capacity ? device.capacity.toFixed(1) : '0.0';
         
         card.innerHTML = `
           <div class="hw-badge ${hwType}">${hwEmoji} ${hwLabel}</div>
           <div class="device-header">
             <div class="device-url">${device.url}</div>
-            <div class="device-tps">${device.tps.toFixed(1)} T/s</div>
+            <div class="device-tps" style="animation: ${device.tps > 0 ? 'tpsPulse 1s ease' : 'none'}">${device.tps.toFixed(1)} T/s</div>
           </div>
           <div style="font-size: 0.85em; color: #a0a0a0; margin-bottom: 5px;">
-            Model: ${device.model} | Active: ${device.busy}
+            Model: ${device.model}
+          </div>
+          <div style="font-size: 0.85em; color: #667eea; margin-bottom: 5px;">
+            Active: ${device.busy}/${maxConcurrent} | Capacity: ${capacity} | ${onlineStatus}
           </div>
           <div class="device-queue">
             <span class="queue-label">Queue:</span>
@@ -698,6 +710,17 @@
         
         container.appendChild(card);
       });
+      
+      // Add summary section with total capacity and strategy
+      if (data.totalCapacity || data.strategy) {
+        const summary = document.createElement('div');
+        summary.style.cssText = 'font-size: 0.9em; color: #a0a0a0; margin-top: 15px; text-align: center; padding: 10px; background: #0a0e27; border-radius: 8px;';
+        summary.innerHTML = `
+          <span style="color: #667eea;">Strategy:</span> ${data.strategy || 'unknown'} | 
+          <span style="color: #4ade80;">Total Capacity:</span> ${data.totalCapacity ? data.totalCapacity.toFixed(1) : 0} req/s
+        `;
+        container.appendChild(summary);
+      }
     }
     
     // WebSocket connection to benchmark

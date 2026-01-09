@@ -31,22 +31,34 @@ app.use(express.json());
 
 // API endpoint to get LLM device information for monitoring
 app.get('/api/devices', (req, res) => {
-  const devices = llmService.ollamaBases.map(base => ({
-    url: base,
-    queueSize: llmService.deviceQueues[base]?.length || 0,
-    busy: llmService.deviceBusy[base] || 0,
-    tps: llmService.devicePerformance[base]?.tps || 0,
-    maxConcurrent: llmService.loadBalancer.getMaxConcurrent(base),
-    model: llmService.devicePerformance[base]?.model || llmService.modelName,
-    acceleration: llmService.devicePerformance[base]?.acceleration || 'unknown'
-  }));
+  const devices = llmService.ollamaBases.map(base => {
+    const lbTPS = llmService.loadBalancer.deviceTPS[base] || 0;
+    const perfTPS = llmService.devicePerformance[base]?.tps || 0;
+    // Use load balancer's real-time TPS (updated during inference) or fall back to devicePerformance
+    const currentTPS = lbTPS > 0 ? lbTPS : perfTPS;
+    
+    return {
+      url: base,
+      queueSize: llmService.deviceQueues[base]?.length || 0,
+      busy: llmService.deviceBusy[base] || 0,
+      tps: currentTPS,
+      maxConcurrent: llmService.loadBalancer.getMaxConcurrent(base),
+      capacity: llmService.loadBalancer.deviceCapacities[base] || 0,
+      ranking: llmService.loadBalancer.deviceRankings[base] || 0,
+      online: llmService.loadBalancer.isOnline(base),
+      model: llmService.devicePerformance[base]?.model || llmService.modelName,
+      acceleration: llmService.devicePerformance[base]?.acceleration || 'unknown'
+    };
+  });
   
   res.json({
     devices,
     useOllama: llmService.useOllama,
     currentModel: llmService.modelName,
     localHardware: llmService.localHardwareInfo,
-    hasMetalAcceleration: llmService.hasMetalAcceleration
+    hasMetalAcceleration: llmService.hasMetalAcceleration,
+    totalCapacity: llmService.loadBalancer.getTotalCapacity(),
+    strategy: llmService.loadBalancer.getStrategy()
   });
 });
 
