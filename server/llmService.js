@@ -49,11 +49,10 @@ class LLMService {
     this.generator = null;
     this.isInitialized = false;
     this.healthCheckInterval = null; // Interval for checking offline devices
-    this.healthCheckInterval = null; // Interval for checking offline devices
-    this.healthCheckInterval = null; // Interval for checking offline devices
     this.initializationPromise = null;
     this.hasMetalAcceleration = false; // Detected during hardware info
     this.localHardwareInfo = null; // Store local hardware detection results
+    this.lastTokenCount = 50; // Track last token count for performance profiling
 
     // Initialize per-device queues and busy flags
     this.deviceQueues = {};
@@ -400,6 +399,10 @@ class LLMService {
     const { question, trainingData, llmKnowledge, resolve, reject } = request;
     const startTime = Date.now(); // Track completion time for work-stealing
     
+    // Feature 6: Register active request for potential cancellation
+    const requestId = this.loadBalancer.registerActiveRequest(base, request);
+    const abortSignal = this.loadBalancer.getAbortSignal(base, requestId);
+    
     console.log(`[LLM] Processing request on ${base} (active: ${this.deviceBusy[base]}/${maxConcurrent}, queue: ${this.deviceQueues[base].length} remaining)`);
     
     // Start processing next request immediately if capacity available
@@ -411,16 +414,44 @@ class LLMService {
       if (!this.isInitialized) await this.initialize();
       const context = this.buildContext(trainingData, llmKnowledge);
       const response = this.useOllama
-        ? await this.generateWithOllamaOnDevice(base, question, context)
+        ? await this.generateWithOllamaOnDevice(base, question, context, abortSignal)
         : await this.generateWithTransformers(question, context);
       
       // Record completion time for work-stealing algorithm
       const durationMs = Date.now() - startTime;
       this.loadBalancer.recordCompletion(base, durationMs);
       
+      // Feature 6: Mark request as completed (prevents cancellation)
+      this.loadBalancer.completeActiveRequest(base, requestId);
+      
+      // Feature 7: Record successful completion for historical profiling
+      this.loadBalancer.recordPerformance(base, {
+        durationMs,
+        tokens: this.lastTokenCount || 50,
+        success: true
+      });
+      
       resolve(response);
     } catch (error) {
+      // Check if this was a cancellation
+      if (error.name === 'AbortError') {
+        console.log(`[LLM] Request cancelled on ${base}, will be re-routed`);
+        // The loadBalancer handles re-routing in cancelAndReroute
+        return;
+      }
+      
       console.error('[LLM] Error generating response on', base, ':', error.message);
+      
+      // Feature 7: Record failure for historical profiling
+      const durationMs = Date.now() - startTime;
+      this.loadBalancer.recordPerformance(base, {
+        durationMs,
+        tokens: 0,
+        success: false
+      });
+      
+      // Feature 6: Complete the request to clean up tracking
+      this.loadBalancer.completeActiveRequest(base, requestId);
       
       // Mark device as offline if it fails
       this.loadBalancer.markOffline(base);
@@ -451,7 +482,7 @@ class LLMService {
     }
   }
 
-  async generateWithOllamaOnDevice(base, question, context) {
+  async generateWithOllamaOnDevice(base, question, context, abortSignal = null) {
     try {
       const prompt = context
         ? `${context}\n\nQuestion: ${question}\nAnswer:`
@@ -460,11 +491,18 @@ class LLMService {
       console.log('[LLM] Generating response with Ollama at', base);
 
       const tryRequest = async (path, body) => {
-        const res = await fetch(`${base}${path}`, {
+        const fetchOptions = {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
-        });
+        };
+        
+        // Feature 6: Add abort signal for cancellation support
+        if (abortSignal) {
+          fetchOptions.signal = abortSignal;
+        }
+        
+        const res = await fetch(`${base}${path}`, fetchOptions);
         return res;
       };
 
@@ -512,6 +550,9 @@ class LLMService {
       if (!response.ok) throw new Error(`Ollama request failed: ${response.status}`);
 
       const data = await response.json();
+      
+      // Feature 7: Track last token count for performance profiling
+      this.lastTokenCount = data.eval_count || 50;
       
       // Update load balancer's average token count if available
       if (data.eval_count) {
@@ -887,6 +928,121 @@ class LLMService {
     } catch (error) {
       return false;
     }
+  }
+
+  // ==================== ADVANCED FEATURE API METHODS ====================
+
+  /**
+   * Configure advanced load balancing features
+   * @param {Object} config - Feature configuration
+   */
+  configureAdvancedFeatures(config) {
+    this.loadBalancer.configureAdvancedFeatures(config);
+  }
+
+  /**
+   * Get status of all advanced features
+   * @returns {Object} Feature status
+   */
+  getAdvancedFeatureStatus() {
+    return this.loadBalancer.getAdvancedFeatureStatus();
+  }
+
+  /**
+   * Get historical performance profiles for all devices
+   * @returns {Object} Performance profiles
+   */
+  getPerformanceProfiles() {
+    return this.loadBalancer.getAllPerformanceProfiles();
+  }
+
+  /**
+   * Get performance profile for a specific device
+   * @param {string} base - Device base URL
+   * @returns {Object|null} Performance profile
+   */
+  getDevicePerformanceProfile(base) {
+    return this.loadBalancer.getPerformanceProfile(base);
+  }
+
+  /**
+   * Export all performance data for analysis
+   * @returns {Object} Complete performance data export
+   */
+  exportPerformanceData() {
+    return this.loadBalancer.exportPerformanceData();
+  }
+
+  /**
+   * Set adaptive queue multiplier for a device
+   * @param {string} base - Device base URL
+   * @param {number} multiplier - Queue multiplier (1.0 = normal)
+   */
+  setDeviceQueueMultiplier(base, multiplier) {
+    this.loadBalancer.setAdaptiveMultiplier(base, multiplier);
+    // Recalculate capacity with new multiplier
+    const tps = this.devicePerformance[base]?.tps || 0;
+    this.loadBalancer.deviceCapacities[base] = this.loadBalancer.calculateCapacity(tps, base);
+  }
+
+  /**
+   * Set cancellation timeout for slow requests
+   * @param {number} timeoutMs - Timeout in milliseconds
+   */
+  setCancellationTimeout(timeoutMs) {
+    this.loadBalancer.setCancellationTimeout(timeoutMs);
+  }
+
+  /**
+   * Get batch status for fast machines
+   * @returns {Object} Pending batch info
+   */
+  getBatchStatus() {
+    return this.loadBalancer.getBatchStatus();
+  }
+
+  /**
+   * Check pre-warming recommendations based on queue velocity
+   * @returns {Object} Pre-warming recommendations
+   */
+  getPreWarmingStatus() {
+    return this.loadBalancer.checkPreWarming(this.deviceQueues);
+  }
+
+  /**
+   * Get queue velocities for all devices
+   * @returns {Object} Queue velocity per device
+   */
+  getQueueVelocities() {
+    const velocities = {};
+    for (const base of this.ollamaBases) {
+      velocities[base] = this.loadBalancer.getQueueVelocity(base);
+    }
+    return velocities;
+  }
+
+  /**
+   * Clear performance history for a device
+   * @param {string} base - Device base URL
+   */
+  clearDeviceHistory(base) {
+    this.loadBalancer.clearPerformanceHistory(base);
+  }
+
+  /**
+   * Get comprehensive load balancer stats including new features
+   * @returns {Object} Complete stats
+   */
+  getComprehensiveStats() {
+    return {
+      basic: this.getLoadBalancerMetrics(),
+      rebalance: this.getRebalanceStats(),
+      queueHealth: this.getQueueHealth(),
+      advancedFeatures: this.getAdvancedFeatureStatus(),
+      performanceProfiles: this.getPerformanceProfiles(),
+      velocities: this.getQueueVelocities(),
+      preWarming: this.getPreWarmingStatus()
+    };
   }
 }
 

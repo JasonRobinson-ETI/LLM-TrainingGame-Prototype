@@ -27,6 +27,44 @@ class LoadBalancer {
     this.completionTimes = {}; // Track recent completion times per device
     this.completionWindow = 10; // Keep last N completions for rate calculation
     this.minStealThreshold = 1; // Steal even if source has just 1 item (when target is idle)
+    
+    // Feature 1: Weighted Request Distribution Based on TPS Ratios
+    this.useWeightedDistribution = true;
+    this.weightExponent = 1.5; // Higher = more aggressive weighting toward fast machines
+    
+    // Feature 2: Adaptive Queue Multipliers (enhanced)
+    this.adaptiveMultipliers = true;
+    this.queueMultipliers = {}; // Per-device adaptive multipliers
+    
+    // Feature 3: Request Batching for Fast Machines
+    this.enableBatching = true;
+    this.batchWindow = 50; // ms to wait for batch accumulation
+    this.pendingBatches = {}; // Per-device pending batch requests
+    this.batchTimers = {}; // Timers for batch windows
+    this.minBatchSize = 2; // Minimum requests to form a batch
+    this.maxBatchSize = 4; // Maximum batch size
+    
+    // Feature 4: Predictive Pre-warming Based on Queue Velocity
+    this.queueVelocity = {}; // Rate of queue fill per device (items/sec)
+    this.queueHistory = {}; // Recent queue size snapshots
+    this.velocityWindow = 5; // Seconds to track velocity
+    this.preWarmThreshold = 2.0; // items/sec velocity to trigger pre-warming
+    
+    // Feature 5: Dynamic MaxConcurrent Based on Real Performance (enhanced)
+    this.dynamicConcurrency = true;
+    this.targetLatencyMs = 3000; // Target latency threshold
+    this.concurrencyAdjustments = {}; // Per-device adjustments
+    
+    // Feature 6: Request Cancellation & Re-routing
+    this.enableCancellation = true;
+    this.cancellationTimeoutMs = 15000; // Cancel after 15s
+    this.activeRequests = {}; // Track active requests for cancellation
+    this.requestIdCounter = 0;
+    
+    // Feature 7: Historical Performance Profiling
+    this.performanceHistory = {}; // Per-device historical metrics
+    this.historyMaxEntries = 1000; // Max history entries per device
+    this.performanceProfiles = {}; // Computed profiles (avg, p50, p95, p99)
   }
 
   /**
@@ -40,29 +78,58 @@ class LoadBalancer {
 
   /**
    * Calculate max queue capacity based on TPS
-   * Uses adaptive multipliers: fast machines can queue more aggressively
+   * Feature 2: Uses adaptive multipliers that adjust based on real performance
    * @param {number} tps - Tokens per second for the device
+   * @param {string} base - Optional device base URL for adaptive multipliers
    * @returns {number} Max number of people allowed in queue
    */
-  calculateCapacity(tps) {
+  calculateCapacity(tps, base = null) {
     if (tps <= 0) return 0;
     
-    // Adaptive multipliers based on TPS performance
-    // Fast machines (>400 TPS) can queue 2x more aggressively
-    // Medium-fast machines (>200 TPS) can queue 1.5x more
-    // Slow machines (<50 TPS) queue conservatively at 0.5x
+    // Base multiplier from TPS tier
     let multiplier = 1.0;
     if (tps >= 400) multiplier = 2.0;      // Ultra-fast: Double capacity
     else if (tps >= 200) multiplier = 1.5; // Fast: 50% more capacity
     else if (tps < 50) multiplier = 0.5;   // Slow: Half capacity
+    
+    // Feature 2: Apply adaptive per-device multiplier
+    if (this.adaptiveMultipliers && base) {
+      const adaptiveMult = this.queueMultipliers[base];
+      if (adaptiveMult !== undefined) {
+        multiplier *= adaptiveMult;
+      }
+      
+      // Adjust based on historical success rate
+      const profile = this.performanceProfiles[base];
+      if (profile) {
+        // If device has low failure rate, increase multiplier
+        if (profile.successRate > 0.98) {
+          multiplier *= 1.2;
+        }
+        // If device has high failure rate, decrease multiplier
+        if (profile.successRate < 0.9) {
+          multiplier *= 0.7;
+        }
+      }
+    }
     
     const baseCapacity = tps / this.tpsPerPerson;
     return Math.max(1, Math.floor(baseCapacity * multiplier));
   }
 
   /**
+   * Feature 2: Set adaptive queue multiplier for a device
+   * @param {string} base - Device base URL
+   * @param {number} multiplier - Multiplier (1.0 = normal, 2.0 = double)
+   */
+  setAdaptiveMultiplier(base, multiplier) {
+    this.queueMultipliers[base] = Math.max(0.5, Math.min(3.0, multiplier));
+    console.log(`[LoadBalancer] Adaptive multiplier for ${base}: ${multiplier.toFixed(2)}x`);
+  }
+
+  /**
    * Get dynamic max concurrent requests for a device based on its TPS and real performance
-   * Adapts concurrency based on both speed (TPS) and actual completion times
+   * Feature 5: Adapts concurrency based on actual throughput, not just speed
    * @param {string} base - Device base URL
    * @returns {number} Max concurrent requests allowed for this device
    */
@@ -73,17 +140,48 @@ class LoadBalancer {
     // Use actual completion times to determine optimal concurrency
     const avgCompletionMs = this.getAvgCompletionTime(base);
     
-    // Ultra-fast machines (400+ TPS, <2s completion) can handle 4 concurrent
-    if (tps >= 400 && avgCompletionMs < 2000) return 4;
+    // Base concurrency from TPS and latency
+    let baseConcurrency;
+    if (tps >= 400 && avgCompletionMs < 2000) baseConcurrency = 4;
+    else if (tps >= 200 && avgCompletionMs < 3000) baseConcurrency = 3;
+    else if (tps >= 100 && avgCompletionMs < 5000) baseConcurrency = 2;
+    else baseConcurrency = 1;
     
-    // Fast machines (200+ TPS, <3s completion) can handle 3 concurrent
-    if (tps >= 200 && avgCompletionMs < 3000) return 3;
+    // Feature 5: Dynamic adjustment based on real performance
+    if (this.dynamicConcurrency) {
+      const adjustment = this.concurrencyAdjustments[base] || 0;
+      const profile = this.performanceProfiles[base];
+      
+      // If p95 latency is low, we can increase concurrency
+      if (profile && profile.p95 < this.targetLatencyMs * 0.5) {
+        baseConcurrency = Math.min(8, baseConcurrency + 1); // Allow up to 8 for very fast machines
+      }
+      
+      // If p95 latency is too high, decrease concurrency
+      if (profile && profile.p95 > this.targetLatencyMs * 1.5) {
+        baseConcurrency = Math.max(1, baseConcurrency - 1);
+      }
+      
+      // Apply any manual adjustments
+      baseConcurrency = Math.max(1, Math.min(8, baseConcurrency + adjustment));
+    }
     
-    // Medium machines (100+ TPS, <5s completion) can handle 2 concurrent
-    if (tps >= 100 && avgCompletionMs < 5000) return 2;
-    
-    // Slow machines get 1 concurrent request
-    return 1;
+    return baseConcurrency;
+  }
+
+  /**
+   * Feature 1: Weighted random selection helper
+   * @param {number[]} weights - Array of weights
+   * @param {number} totalWeight - Sum of all weights
+   * @returns {number} Selected index
+   */
+  weightedRandomSelect(weights, totalWeight) {
+    let random = Math.random() * totalWeight;
+    for (let i = 0; i < weights.length; i++) {
+      random -= weights[i];
+      if (random <= 0) return i;
+    }
+    return weights.length - 1;
   }
 
   /**
@@ -101,7 +199,7 @@ class LoadBalancer {
     sorted.forEach((device, index) => {
       const base = device.base;
       const tps = device.tps;
-      const capacity = this.calculateCapacity(tps);
+      const capacity = this.calculateCapacity(tps, base); // Pass base for adaptive multipliers
       
       this.deviceRankings[base] = index + 1; // Ranking (1-based)
       this.deviceCapacities[base] = capacity;
@@ -277,13 +375,33 @@ class LoadBalancer {
       return availableBases[0]; // Only one choice
     }
 
-    // Randomly sample 2 devices
-    const idx1 = Math.floor(Math.random() * availableBases.length);
-    let idx2 = Math.floor(Math.random() * availableBases.length);
-    
-    // Ensure we get 2 different devices
-    while (idx2 === idx1 && availableBases.length > 1) {
+    // Feature 1: Weighted random selection based on TPS ratios
+    let idx1, idx2;
+    if (this.useWeightedDistribution) {
+      // Calculate TPS-weighted probabilities
+      const weights = availableBases.map(base => {
+        const tps = this.deviceTPS[base] || 1;
+        return Math.pow(tps, this.weightExponent); // Exponential weighting
+      });
+      const totalWeight = weights.reduce((a, b) => a + b, 0);
+      
+      // Weighted random selection for first device
+      idx1 = this.weightedRandomSelect(weights, totalWeight);
+      
+      // For second device, temporarily zero out first device's weight
+      const weights2 = [...weights];
+      weights2[idx1] = 0;
+      const totalWeight2 = weights2.reduce((a, b) => a + b, 0);
+      idx2 = totalWeight2 > 0 ? this.weightedRandomSelect(weights2, totalWeight2) : idx1;
+    } else {
+      // Original random sampling
+      idx1 = Math.floor(Math.random() * availableBases.length);
       idx2 = Math.floor(Math.random() * availableBases.length);
+      
+      // Ensure we get 2 different devices
+      while (idx2 === idx1 && availableBases.length > 1) {
+        idx2 = Math.floor(Math.random() * availableBases.length);
+      }
     }
 
     const device1 = availableBases[idx1];
@@ -638,7 +756,7 @@ class LoadBalancer {
     if (!this.onlineDevices.has(base) && tps > 0) {
       this.onlineDevices.add(base);
       this.deviceTPS[base] = tps;
-      this.deviceCapacities[base] = this.calculateCapacity(tps);
+      this.deviceCapacities[base] = this.calculateCapacity(tps, base); // Pass base for adaptive multipliers
       console.log(`[LoadBalancer] Device came online: ${base} (TPS: ${tps.toFixed(2)})`);
     }
   }
@@ -662,7 +780,7 @@ class LoadBalancer {
     if (percentChange > 10) {
       const oldConcurrent = this.getMaxConcurrent(base);
       this.deviceTPS[base] = newTPS;
-      this.deviceCapacities[base] = this.calculateCapacity(newTPS);
+      this.deviceCapacities[base] = this.calculateCapacity(newTPS, base); // Pass base for adaptive multipliers
       const newConcurrent = this.getMaxConcurrent(base);
       
       console.log(
@@ -673,7 +791,7 @@ class LoadBalancer {
     } else {
       // Silently update
       this.deviceTPS[base] = newTPS;
-      this.deviceCapacities[base] = this.calculateCapacity(newTPS);
+      this.deviceCapacities[base] = this.calculateCapacity(newTPS, base); // Pass base for adaptive multipliers
     }
   }
 
@@ -787,12 +905,21 @@ class LoadBalancer {
   /**
    * Rebalance queues by stealing work from busy devices to idle ones
    * AGGRESSIVE: If any device is idle and another has work, steal it!
+   * Enhanced with Feature 4: Pre-warming based on queue velocity
    * @param {Object} deviceQueues - Map of base -> queue array
    * @param {Function} processQueueFn - Function to process queue after stealing
    */
   rebalanceQueues(deviceQueues, processQueueFn) {
     const onlineDevices = this.getOnlineDevices();
     if (onlineDevices.length < 2) return; // Need at least 2 devices to rebalance
+    
+    // Feature 4: Record queue sizes for velocity tracking
+    for (const base of onlineDevices) {
+      this.recordQueueSize(base, deviceQueues[base]?.length || 0);
+    }
+    
+    // Feature 4: Perform pre-warming based on velocity predictions
+    this.performPreWarming(deviceQueues, processQueueFn);
     
     // Calculate queue info
     const queueInfo = onlineDevices.map(base => {
@@ -930,6 +1057,559 @@ class LoadBalancer {
       enabled: this.rebalanceEnabled,
       devices: stats,
       totalQueued: stats.reduce((sum, s) => sum + s.queueSize, 0)
+    };
+  }
+
+  // ==================== FEATURE 3: REQUEST BATCHING FOR FAST MACHINES ====================
+
+  /**
+   * Feature 3: Check if a device is eligible for batching
+   * @param {string} base - Device base URL
+   * @returns {boolean} True if device can handle batched requests
+   */
+  canBatch(base) {
+    if (!this.enableBatching) return false;
+    const tps = this.deviceTPS[base] || 0;
+    // Only fast machines (200+ TPS) should batch
+    return tps >= 200;
+  }
+
+  /**
+   * Feature 3: Add a request to a batch for a fast machine
+   * Returns immediately if batching is triggered, otherwise queues for batch
+   * @param {string} base - Device base URL
+   * @param {Object} request - The request object
+   * @param {Function} processBatchFn - Function to call when batch is ready
+   * @returns {boolean} True if request was batched, false if should process normally
+   */
+  tryBatchRequest(base, request, processBatchFn) {
+    if (!this.canBatch(base)) return false;
+    
+    // Initialize batch structures for this device
+    if (!this.pendingBatches[base]) {
+      this.pendingBatches[base] = [];
+    }
+    
+    // Add to pending batch
+    this.pendingBatches[base].push(request);
+    
+    // If we've hit max batch size, process immediately
+    if (this.pendingBatches[base].length >= this.maxBatchSize) {
+      this.flushBatch(base, processBatchFn);
+      return true;
+    }
+    
+    // Start batch window timer if not already running
+    if (!this.batchTimers[base]) {
+      this.batchTimers[base] = setTimeout(() => {
+        this.flushBatch(base, processBatchFn);
+      }, this.batchWindow);
+    }
+    
+    return true;
+  }
+
+  /**
+   * Feature 3: Flush pending batch for a device
+   * @param {string} base - Device base URL
+   * @param {Function} processBatchFn - Function to process the batch
+   */
+  flushBatch(base, processBatchFn) {
+    // Clear the timer
+    if (this.batchTimers[base]) {
+      clearTimeout(this.batchTimers[base]);
+      delete this.batchTimers[base];
+    }
+    
+    const batch = this.pendingBatches[base] || [];
+    delete this.pendingBatches[base];
+    
+    if (batch.length === 0) return;
+    
+    // If only 1 request, just process normally
+    if (batch.length < this.minBatchSize) {
+      if (processBatchFn) {
+        batch.forEach(request => processBatchFn(base, request));
+      }
+      return;
+    }
+    
+    console.log(`[LoadBalancer] 📦 Batch ready: ${base.split('//')[1]} processing ${batch.length} requests together`);
+    
+    // Process batch
+    if (processBatchFn) {
+      processBatchFn(base, batch);
+    }
+  }
+
+  /**
+   * Feature 3: Get pending batch info
+   * @returns {Object} Batch status per device
+   */
+  getBatchStatus() {
+    const status = {};
+    for (const [base, batch] of Object.entries(this.pendingBatches)) {
+      status[base] = {
+        pending: batch.length,
+        hasTimer: !!this.batchTimers[base]
+      };
+    }
+    return status;
+  }
+
+  // ==================== FEATURE 4: PREDICTIVE PRE-WARMING BASED ON QUEUE VELOCITY ====================
+
+  /**
+   * Feature 4: Record queue size snapshot for velocity calculation
+   * @param {string} base - Device base URL
+   * @param {number} queueSize - Current queue size
+   */
+  recordQueueSize(base, queueSize) {
+    if (!this.queueHistory[base]) {
+      this.queueHistory[base] = [];
+    }
+    
+    this.queueHistory[base].push({
+      time: Date.now(),
+      size: queueSize
+    });
+    
+    // Keep only recent history
+    const cutoff = Date.now() - (this.velocityWindow * 1000);
+    this.queueHistory[base] = this.queueHistory[base].filter(h => h.time > cutoff);
+    
+    // Calculate velocity
+    this.updateQueueVelocity(base);
+  }
+
+  /**
+   * Feature 4: Calculate queue fill velocity (items per second)
+   * @param {string} base - Device base URL
+   */
+  updateQueueVelocity(base) {
+    const history = this.queueHistory[base];
+    if (!history || history.length < 2) {
+      this.queueVelocity[base] = 0;
+      return;
+    }
+    
+    // Calculate rate of change over the window
+    const oldest = history[0];
+    const newest = history[history.length - 1];
+    const timeDiffSec = (newest.time - oldest.time) / 1000;
+    
+    if (timeDiffSec < 0.5) {
+      this.queueVelocity[base] = 0;
+      return;
+    }
+    
+    // Positive velocity = queue growing, negative = queue shrinking
+    const sizeDiff = newest.size - oldest.size;
+    this.queueVelocity[base] = sizeDiff / timeDiffSec;
+  }
+
+  /**
+   * Feature 4: Get queue velocity for a device
+   * @param {string} base - Device base URL
+   * @returns {number} Items per second (positive = growing)
+   */
+  getQueueVelocity(base) {
+    return this.queueVelocity[base] || 0;
+  }
+
+  /**
+   * Feature 4: Check if pre-warming is needed based on velocity
+   * Returns devices that should preemptively steal work
+   * @param {Object} deviceQueues - Current device queues
+   * @returns {Object} Pre-warming recommendations
+   */
+  checkPreWarming(deviceQueues) {
+    const recommendations = [];
+    const onlineDevices = this.getOnlineDevices();
+    
+    for (const base of onlineDevices) {
+      const velocity = this.getQueueVelocity(base);
+      const queueSize = deviceQueues[base]?.length || 0;
+      const capacity = this.deviceCapacities[base] || 1;
+      
+      // If queue is filling fast and approaching capacity, recommend pre-warming
+      if (velocity > this.preWarmThreshold) {
+        const timeToFull = (capacity - queueSize) / velocity;
+        if (timeToFull < 5) { // Will be full in 5 seconds
+          recommendations.push({
+            device: base,
+            velocity: velocity.toFixed(2),
+            queueSize,
+            capacity,
+            timeToFull: timeToFull.toFixed(1),
+            action: 'redistribute'
+          });
+        }
+      }
+    }
+    
+    return recommendations;
+  }
+
+  /**
+   * Feature 4: Proactive pre-warming - called during rebalancing
+   * Steals work before queues overflow
+   * @param {Object} deviceQueues - Device queues
+   * @param {Function} processQueueFn - Queue processor function
+   */
+  performPreWarming(deviceQueues, processQueueFn) {
+    const recommendations = this.checkPreWarming(deviceQueues);
+    if (recommendations.length === 0) return;
+    
+    // Find idle or low-load devices to receive work
+    const onlineDevices = this.getOnlineDevices();
+    const idleDevices = onlineDevices.filter(base => {
+      const queueSize = deviceQueues[base]?.length || 0;
+      const capacity = this.deviceCapacities[base] || 1;
+      return queueSize < capacity * 0.3; // Less than 30% utilized
+    });
+    
+    if (idleDevices.length === 0) return;
+    
+    for (const rec of recommendations) {
+      const source = rec.device;
+      const target = idleDevices[0]; // Pick first idle device
+      
+      if (source === target) continue;
+      
+      // Pre-warm by stealing some work
+      const toSteal = Math.min(2, deviceQueues[source].length);
+      for (let i = 0; i < toSteal && deviceQueues[source].length > 0; i++) {
+        const request = deviceQueues[source].pop();
+        if (request) {
+          deviceQueues[target].push(request);
+        }
+      }
+      
+      if (toSteal > 0) {
+        console.log(
+          `[LoadBalancer] 🔥 Pre-warming: Moved ${toSteal} requests from ` +
+          `${source.split('//')[1]} (velocity:${rec.velocity}/s) to ${target.split('//')[1]}`
+        );
+        
+        if (processQueueFn) {
+          setImmediate(() => processQueueFn(target));
+        }
+      }
+    }
+  }
+
+  // ==================== FEATURE 6: REQUEST CANCELLATION & RE-ROUTING ====================
+
+  /**
+   * Feature 6: Register an active request for potential cancellation
+   * @param {string} base - Device base URL
+   * @param {Object} request - The request object
+   * @returns {number} Request ID for tracking
+   */
+  registerActiveRequest(base, request) {
+    if (!this.enableCancellation) return null;
+    
+    const requestId = ++this.requestIdCounter;
+    
+    if (!this.activeRequests[base]) {
+      this.activeRequests[base] = new Map();
+    }
+    
+    const activeRequest = {
+      id: requestId,
+      request,
+      startTime: Date.now(),
+      abortController: new AbortController()
+    };
+    
+    this.activeRequests[base].set(requestId, activeRequest);
+    
+    // Set up cancellation timeout
+    activeRequest.timeoutId = setTimeout(() => {
+      this.cancelAndReroute(base, requestId);
+    }, this.cancellationTimeoutMs);
+    
+    return requestId;
+  }
+
+  /**
+   * Feature 6: Mark a request as completed (prevents cancellation)
+   * @param {string} base - Device base URL
+   * @param {number} requestId - Request ID
+   */
+  completeActiveRequest(base, requestId) {
+    if (!requestId || !this.activeRequests[base]) return;
+    
+    const activeRequest = this.activeRequests[base].get(requestId);
+    if (activeRequest) {
+      clearTimeout(activeRequest.timeoutId);
+      this.activeRequests[base].delete(requestId);
+    }
+  }
+
+  /**
+   * Feature 6: Cancel a slow request and re-route to a faster device
+   * @param {string} base - Device base URL where request is running
+   * @param {number} requestId - Request ID to cancel
+   * @returns {boolean} True if successfully re-routed
+   */
+  cancelAndReroute(base, requestId) {
+    const activeRequest = this.activeRequests[base]?.get(requestId);
+    if (!activeRequest) return false;
+    
+    const elapsed = Date.now() - activeRequest.startTime;
+    console.log(
+      `[LoadBalancer] ⏰ Request timeout on ${base.split('//')[1]} ` +
+      `(${(elapsed / 1000).toFixed(1)}s elapsed)`
+    );
+    
+    // Abort the request
+    activeRequest.abortController.abort();
+    clearTimeout(activeRequest.timeoutId);
+    this.activeRequests[base].delete(requestId);
+    
+    // Find a faster device to re-route to
+    const onlineDevices = this.getOnlineDevices().filter(b => b !== base);
+    if (onlineDevices.length === 0) {
+      // No other devices - resolve with timeout message
+      activeRequest.request.resolve("I'm taking too long to think. Let me try again.");
+      return false;
+    }
+    
+    // Sort by TPS and pick the fastest available
+    onlineDevices.sort((a, b) => (this.deviceTPS[b] || 0) - (this.deviceTPS[a] || 0));
+    const newDevice = onlineDevices[0];
+    
+    console.log(
+      `[LoadBalancer] 🔄 Re-routing to ${newDevice.split('//')[1]} ` +
+      `(TPS: ${(this.deviceTPS[newDevice] || 0).toFixed(1)})`
+    );
+    
+    // Return the new device and request for re-processing
+    return {
+      newDevice,
+      request: activeRequest.request
+    };
+  }
+
+  /**
+   * Feature 6: Get abort signal for a request
+   * @param {string} base - Device base URL
+   * @param {number} requestId - Request ID
+   * @returns {AbortSignal|null} Abort signal or null
+   */
+  getAbortSignal(base, requestId) {
+    if (!requestId || !this.activeRequests[base]) return null;
+    const activeRequest = this.activeRequests[base].get(requestId);
+    return activeRequest?.abortController?.signal || null;
+  }
+
+  /**
+   * Feature 6: Set cancellation timeout
+   * @param {number} timeoutMs - Timeout in milliseconds
+   */
+  setCancellationTimeout(timeoutMs) {
+    this.cancellationTimeoutMs = Math.max(5000, Math.min(60000, timeoutMs));
+    console.log(`[LoadBalancer] Cancellation timeout: ${this.cancellationTimeoutMs}ms`);
+  }
+
+  // ==================== FEATURE 7: HISTORICAL PERFORMANCE PROFILING ====================
+
+  /**
+   * Feature 7: Record a request completion for historical profiling
+   * @param {string} base - Device base URL
+   * @param {Object} metrics - Request metrics {durationMs, tokens, success}
+   */
+  recordPerformance(base, metrics) {
+    if (!this.performanceHistory[base]) {
+      this.performanceHistory[base] = [];
+    }
+    
+    this.performanceHistory[base].push({
+      timestamp: Date.now(),
+      ...metrics
+    });
+    
+    // Trim history if too large
+    if (this.performanceHistory[base].length > this.historyMaxEntries) {
+      this.performanceHistory[base] = this.performanceHistory[base].slice(-this.historyMaxEntries);
+    }
+    
+    // Update computed profile
+    this.updatePerformanceProfile(base);
+  }
+
+  /**
+   * Feature 7: Compute performance profile percentiles
+   * @param {string} base - Device base URL
+   */
+  updatePerformanceProfile(base) {
+    const history = this.performanceHistory[base];
+    if (!history || history.length < 10) return; // Need minimum samples
+    
+    // Get durations and sort for percentiles
+    const durations = history.map(h => h.durationMs).sort((a, b) => a - b);
+    const successCount = history.filter(h => h.success !== false).length;
+    
+    const p50Index = Math.floor(durations.length * 0.5);
+    const p95Index = Math.floor(durations.length * 0.95);
+    const p99Index = Math.floor(durations.length * 0.99);
+    
+    this.performanceProfiles[base] = {
+      samples: durations.length,
+      avg: durations.reduce((a, b) => a + b, 0) / durations.length,
+      min: durations[0],
+      max: durations[durations.length - 1],
+      p50: durations[p50Index],
+      p95: durations[p95Index],
+      p99: durations[p99Index],
+      successRate: successCount / history.length,
+      lastUpdated: Date.now()
+    };
+  }
+
+  /**
+   * Feature 7: Get performance profile for a device
+   * @param {string} base - Device base URL
+   * @returns {Object|null} Performance profile or null
+   */
+  getPerformanceProfile(base) {
+    return this.performanceProfiles[base] || null;
+  }
+
+  /**
+   * Feature 7: Get all performance profiles
+   * @returns {Object} All device profiles
+   */
+  getAllPerformanceProfiles() {
+    return { ...this.performanceProfiles };
+  }
+
+  /**
+   * Feature 7: Get performance history for analysis
+   * @param {string} base - Device base URL
+   * @param {number} limit - Max entries to return
+   * @returns {Array} Recent performance history
+   */
+  getPerformanceHistory(base, limit = 100) {
+    const history = this.performanceHistory[base] || [];
+    return history.slice(-limit);
+  }
+
+  /**
+   * Feature 7: Clear historical data for a device
+   * @param {string} base - Device base URL
+   */
+  clearPerformanceHistory(base) {
+    delete this.performanceHistory[base];
+    delete this.performanceProfiles[base];
+    console.log(`[LoadBalancer] Cleared performance history for ${base}`);
+  }
+
+  /**
+   * Feature 7: Export all performance data for analysis
+   * @returns {Object} Complete performance data export
+   */
+  exportPerformanceData() {
+    return {
+      profiles: this.getAllPerformanceProfiles(),
+      history: Object.fromEntries(
+        Object.entries(this.performanceHistory).map(([base, hist]) => [base, hist.slice(-100)])
+      ),
+      velocities: { ...this.queueVelocity },
+      concurrencyAdjustments: { ...this.concurrencyAdjustments },
+      adaptiveMultipliers: { ...this.queueMultipliers }
+    };
+  }
+
+  // ==================== COMBINED FEATURE CONTROLS ====================
+
+  /**
+   * Configure all advanced features at once
+   * @param {Object} config - Feature configuration
+   */
+  configureAdvancedFeatures(config) {
+    if (config.weightedDistribution !== undefined) {
+      this.useWeightedDistribution = config.weightedDistribution;
+      console.log(`[LoadBalancer] Weighted distribution: ${this.useWeightedDistribution ? 'ON' : 'OFF'}`);
+    }
+    if (config.weightExponent !== undefined) {
+      this.weightExponent = Math.max(1.0, Math.min(3.0, config.weightExponent));
+    }
+    if (config.adaptiveMultipliers !== undefined) {
+      this.adaptiveMultipliers = config.adaptiveMultipliers;
+      console.log(`[LoadBalancer] Adaptive multipliers: ${this.adaptiveMultipliers ? 'ON' : 'OFF'}`);
+    }
+    if (config.enableBatching !== undefined) {
+      this.enableBatching = config.enableBatching;
+      console.log(`[LoadBalancer] Request batching: ${this.enableBatching ? 'ON' : 'OFF'}`);
+    }
+    if (config.batchWindow !== undefined) {
+      this.batchWindow = Math.max(10, Math.min(200, config.batchWindow));
+    }
+    if (config.dynamicConcurrency !== undefined) {
+      this.dynamicConcurrency = config.dynamicConcurrency;
+      console.log(`[LoadBalancer] Dynamic concurrency: ${this.dynamicConcurrency ? 'ON' : 'OFF'}`);
+    }
+    if (config.targetLatencyMs !== undefined) {
+      this.targetLatencyMs = Math.max(1000, Math.min(10000, config.targetLatencyMs));
+    }
+    if (config.enableCancellation !== undefined) {
+      this.enableCancellation = config.enableCancellation;
+      console.log(`[LoadBalancer] Request cancellation: ${this.enableCancellation ? 'ON' : 'OFF'}`);
+    }
+    if (config.cancellationTimeoutMs !== undefined) {
+      this.setCancellationTimeout(config.cancellationTimeoutMs);
+    }
+    if (config.preWarmThreshold !== undefined) {
+      this.preWarmThreshold = Math.max(0.5, Math.min(10, config.preWarmThreshold));
+    }
+  }
+
+  /**
+   * Get current advanced feature status
+   * @returns {Object} Feature status
+   */
+  getAdvancedFeatureStatus() {
+    return {
+      weightedDistribution: {
+        enabled: this.useWeightedDistribution,
+        exponent: this.weightExponent
+      },
+      adaptiveMultipliers: {
+        enabled: this.adaptiveMultipliers,
+        devices: Object.keys(this.queueMultipliers).length
+      },
+      batching: {
+        enabled: this.enableBatching,
+        window: this.batchWindow,
+        minSize: this.minBatchSize,
+        maxSize: this.maxBatchSize,
+        pending: Object.keys(this.pendingBatches).reduce((sum, k) => sum + (this.pendingBatches[k]?.length || 0), 0)
+      },
+      preWarming: {
+        threshold: this.preWarmThreshold,
+        velocities: { ...this.queueVelocity }
+      },
+      dynamicConcurrency: {
+        enabled: this.dynamicConcurrency,
+        targetLatency: this.targetLatencyMs,
+        adjustments: { ...this.concurrencyAdjustments }
+      },
+      cancellation: {
+        enabled: this.enableCancellation,
+        timeoutMs: this.cancellationTimeoutMs,
+        activeRequests: Object.keys(this.activeRequests).reduce(
+          (sum, k) => sum + (this.activeRequests[k]?.size || 0), 0
+        )
+      },
+      profiling: {
+        devicesTracked: Object.keys(this.performanceProfiles).length,
+        totalSamples: Object.values(this.performanceHistory).reduce(
+          (sum, h) => sum + (h?.length || 0), 0
+        )
+      }
     };
   }
 }
