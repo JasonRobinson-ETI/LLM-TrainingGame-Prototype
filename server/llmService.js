@@ -5,7 +5,7 @@ class LLMService {
   constructor() {
     this.useOllama = true;
     this.modelChangeCallback = null; // Callback for when model changes
-    this.loadBalancer = new LoadBalancer(100); // 100 TPS per person ratio
+    this.loadBalancer = new LoadBalancer(100, false, true); // 100 TPS per person, greedy=false, powerOfTwo=true
     const requiredEnv = (process.env.OLLAMA_REQUIRED || 'true').toLowerCase();
     this.requireOllama = requiredEnv === '1' || requiredEnv === 'true' || requiredEnv === 'yes';
 
@@ -427,10 +427,17 @@ class LLMService {
       // Decrement active request counter
       this.deviceBusy[base] = Math.max(0, this.deviceBusy[base] - 1);
       
-      // Continue processing queue if items remain and capacity available
+      // Continue processing queue if items remain
       if (this.deviceQueues[base].length > 0) {
         console.log(`[LLM] ${base} processing next queued request`);
         setImmediate(() => this.processDeviceQueue(base));
+      } else if (this.deviceBusy[base] === 0) {
+        // Device is now completely idle - try to steal work from other queues!
+        this.loadBalancer.tryStealWork(
+          base,
+          this.deviceQueues,
+          (stealBase) => this.processDeviceQueue(stealBase)
+        );
       }
     }
   }

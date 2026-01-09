@@ -8,24 +8,25 @@
  */
 
 class LoadBalancer {
-  constructor(tpsPerPerson = 100, useGreedy = true) {
+  constructor(tpsPerPerson = 100, useGreedy = true, usePowerOfTwo = true) {
     this.tpsPerPerson = tpsPerPerson; // Configurable ratio
     this.deviceCapacities = {}; // Max queue size per device
     this.deviceRankings = {}; // Performance ranking (1 = fastest)
     this.deviceTPS = {}; // Store TPS for each device
     this.onlineDevices = new Set(); // Track which devices are currently online
     this.useGreedy = useGreedy; // Use greedy algorithm for optimal device selection
+    this.usePowerOfTwo = usePowerOfTwo; // Use Power of Two Choices algorithm (Netflix, NGINX, HAProxy)
     this.avgTokensPerRequest = 50; // Running average for estimation
     this.complexityCache = new Map(); // Cache for complexity analysis results
     this.cacheMaxSize = 1000; // Limit cache size to prevent memory issues
     
     // Work-stealing / dynamic rebalancing
     this.rebalanceEnabled = true;
-    this.rebalanceIntervalMs = 2000; // Check every 2 seconds
+    this.rebalanceIntervalMs = 500; // Check every 500ms for faster response
     this.rebalanceInterval = null;
     this.completionTimes = {}; // Track recent completion times per device
     this.completionWindow = 10; // Keep last N completions for rate calculation
-    this.minStealThreshold = 2; // Only steal if source queue has at least this many items
+    this.minStealThreshold = 1; // Steal even if source has just 1 item (when target is idle)
   }
 
   /**
@@ -81,6 +82,7 @@ class LoadBalancer {
     });
 
     console.log(`[LoadBalancer] Online devices: ${this.onlineDevices.size}/${sorted.length}`);
+    console.log(`[LoadBalancer] Strategy: ${this.getStrategy()}`);
     return this.getMetricsSummary();
   }
 
@@ -206,6 +208,63 @@ class LoadBalancer {
   }
 
   /**
+   * Select best device using Power of Two Choices algorithm
+   * Randomly samples 2 devices and picks the less loaded one
+   * Used by Netflix, NGINX, and HAProxy to avoid hotspots
+   * @param {Object} deviceQueues - Map of base -> queue array
+   * @param {Object} deviceBusy - Map of base -> boolean
+   * @param {number} estimatedTokens - Estimated tokens for the request
+   * @returns {string|null} Base URL of selected device
+   */
+  selectDevicePowerOfTwo(deviceQueues, deviceBusy, estimatedTokens) {
+    const availableBases = Object.keys(this.deviceRankings)
+      .filter(base => {
+        if (!this.isOnline(base)) return false;
+        const queueSize = deviceQueues[base]?.length || 0;
+        const capacity = this.deviceCapacities[base] || 1;
+        return queueSize < capacity; // Only consider devices with capacity
+      });
+
+    if (availableBases.length === 0) {
+      return null; // All devices at capacity
+    }
+
+    if (availableBases.length === 1) {
+      return availableBases[0]; // Only one choice
+    }
+
+    // Randomly sample 2 devices
+    const idx1 = Math.floor(Math.random() * availableBases.length);
+    let idx2 = Math.floor(Math.random() * availableBases.length);
+    
+    // Ensure we get 2 different devices
+    while (idx2 === idx1 && availableBases.length > 1) {
+      idx2 = Math.floor(Math.random() * availableBases.length);
+    }
+
+    const device1 = availableBases[idx1];
+    const device2 = availableBases[idx2];
+
+    // Calculate expected completion time for both
+    const queueSize1 = deviceQueues[device1]?.length || 0;
+    const queueSize2 = deviceQueues[device2]?.length || 0;
+    
+    const completionTime1 = this.calculateCompletionTime(device1, queueSize1, estimatedTokens);
+    const completionTime2 = this.calculateCompletionTime(device2, queueSize2, estimatedTokens);
+
+    // Pick the less loaded one
+    const selected = completionTime1 <= completionTime2 ? device1 : device2;
+    const rejected = completionTime1 <= completionTime2 ? device2 : device1;
+
+    console.log(
+      `[LoadBalancer] Power of Two: sampled ${device1.split('//')[1]} (${completionTime1.toFixed(2)}s) ` +
+      `vs ${device2.split('//')[1]} (${completionTime2.toFixed(2)}s) → chose ${selected.split('//')[1]}`
+    );
+
+    return selected;
+  }
+
+  /**
    * Select best device using greedy algorithm
    * Chooses device with minimum expected completion time
    * @param {Object} deviceQueues - Map of base -> queue array
@@ -278,8 +337,22 @@ class LoadBalancer {
       );
     }
 
-    // Use greedy algorithm if enabled
-    if (this.useGreedy && analysis) {
+    // Use Power of Two Choices if enabled (preferred over greedy)
+    if (this.usePowerOfTwo && analysis) {
+      const powerOfTwoChoice = this.selectDevicePowerOfTwo(
+        deviceQueues,
+        deviceBusy,
+        analysis.estimatedTokens
+      );
+      
+      if (powerOfTwoChoice) {
+        return powerOfTwoChoice;
+      }
+      // If returns null (all at capacity), fall through to other strategies
+    }
+
+    // Use greedy algorithm if enabled and Power of Two is disabled
+    if (this.useGreedy && !this.usePowerOfTwo && analysis) {
       const greedyChoice = this.selectDeviceGreedy(
         deviceQueues,
         deviceBusy,
@@ -475,6 +548,25 @@ class LoadBalancer {
   }
 
   /**
+   * Toggle Power of Two Choices algorithm on/off
+   * @param {boolean} enabled - Enable or disable Power of Two selection
+   */
+  setPowerOfTwoMode(enabled) {
+    console.log(`[LoadBalancer] Power of Two Choices: ${enabled ? 'ENABLED' : 'DISABLED'}`);
+    this.usePowerOfTwo = enabled;
+  }
+
+  /**
+   * Get current load balancing strategy
+   * @returns {string} Current strategy name
+   */
+  getStrategy() {
+    if (this.usePowerOfTwo) return 'Power of Two Choices';
+    if (this.useGreedy) return 'Greedy (Minimum Completion Time)';
+    return 'Complexity-Based Routing';
+  }
+
+  /**
    * Mark a device as offline (e.g., when requests fail)
    * @param {string} base - Device base URL
    */
@@ -585,7 +677,11 @@ class LoadBalancer {
       clearInterval(this.rebalanceInterval);
     }
     
-    console.log('[LoadBalancer] Starting work-stealing rebalancer (every 2s)');
+    // Store references for proactive stealing
+    this.deviceQueuesRef = deviceQueues;
+    this.processQueueFnRef = processQueueFn;
+    
+    console.log('[LoadBalancer] Starting work-stealing rebalancer (every 500ms)');
     
     this.rebalanceInterval = setInterval(() => {
       if (this.rebalanceEnabled) {
@@ -606,7 +702,8 @@ class LoadBalancer {
   }
 
   /**
-   * Rebalance queues by stealing work from slow/overloaded devices to fast/idle ones
+   * Rebalance queues by stealing work from busy devices to idle ones
+   * AGGRESSIVE: If any device is idle and another has work, steal it!
    * @param {Object} deviceQueues - Map of base -> queue array
    * @param {Function} processQueueFn - Function to process queue after stealing
    */
@@ -614,74 +711,63 @@ class LoadBalancer {
     const onlineDevices = this.getOnlineDevices();
     if (onlineDevices.length < 2) return; // Need at least 2 devices to rebalance
     
-    // Calculate queue info with estimated completion times
+    // Calculate queue info
     const queueInfo = onlineDevices.map(base => {
       const queueSize = deviceQueues[base]?.length || 0;
-      const avgTime = this.getAvgCompletionTime(base);
-      const estimatedWait = queueSize * avgTime;
-      const rate = this.getProcessingRate(base);
+      const tps = this.deviceTPS[base] || 0;
       
       return {
         base,
         queueSize,
-        avgTime,
-        estimatedWait,
-        rate,
-        tps: this.deviceTPS[base] || 0
+        tps
       };
     });
     
-    // Sort by estimated wait time (longest first = potential source for stealing)
-    queueInfo.sort((a, b) => b.estimatedWait - a.estimatedWait);
+    // Find idle devices (empty queue, online)
+    const idleDevices = queueInfo.filter(q => q.queueSize === 0 && q.tps > 0);
     
-    // Find candidates for stealing FROM (slow/overloaded)
-    const stealFrom = queueInfo.filter(q => q.queueSize >= this.minStealThreshold);
+    // Find busy devices (have items in queue)
+    const busyDevices = queueInfo
+      .filter(q => q.queueSize >= this.minStealThreshold)
+      .sort((a, b) => b.queueSize - a.queueSize); // Most loaded first
     
-    // Find candidates for stealing TO (fast/idle)
-    const stealTo = queueInfo.filter(q => q.queueSize === 0 && q.tps > 0);
+    if (idleDevices.length === 0 || busyDevices.length === 0) return;
     
-    if (stealFrom.length === 0 || stealTo.length === 0) return;
-    
-    // Perform work stealing
+    // Perform work stealing - give idle devices something to do!
     let stolen = 0;
-    for (const target of stealTo) {
-      for (const source of stealFrom) {
-        // Don't steal from faster devices to slower ones
-        if (source.tps >= target.tps * 0.8) continue; // Source is nearly as fast, skip
+    for (const target of idleDevices) {
+      // Find the busiest device to steal from
+      for (const source of busyDevices) {
+        // Make sure source still has items
+        if (deviceQueues[source.base].length < this.minStealThreshold) continue;
         
-        // Only steal if source has significantly more estimated wait
-        if (source.estimatedWait < target.avgTime * 2) continue;
-        
-        // Steal one request
-        if (deviceQueues[source.base].length >= this.minStealThreshold) {
-          const request = deviceQueues[source.base].pop(); // Take from end (LIFO for fairness)
-          if (request) {
-            deviceQueues[target.base].push(request);
-            stolen++;
-            
-            console.log(
-              `[LoadBalancer] 🔄 Work stolen: ${source.base.split('//')[1]} -> ${target.base.split('//')[1]} ` +
-              `(source queue: ${source.queueSize - 1}, target faster by ${((target.tps / source.tps - 1) * 100).toFixed(0)}%)`
-            );
-            
-            // Trigger processing on target
-            if (processQueueFn) {
-              setImmediate(() => processQueueFn(target.base));
-            }
-            
-            // Update queue sizes for next iteration
-            source.queueSize--;
-            target.queueSize++;
-            
-            // Only steal one per target per cycle
-            break;
+        // Steal one request from the end (LIFO - most recently added)
+        const request = deviceQueues[source.base].pop();
+        if (request) {
+          deviceQueues[target.base].push(request);
+          stolen++;
+          
+          console.log(
+            `[LoadBalancer] 🔄 Work stolen: ${source.base.split('//')[1]} (queue:${deviceQueues[source.base].length}) -> ` +
+            `${target.base.split('//')[1]} (was idle, TPS:${target.tps.toFixed(0)})`
+          );
+          
+          // Trigger processing on target immediately
+          if (processQueueFn) {
+            setImmediate(() => processQueueFn(target.base));
           }
+          
+          // Update source queue size for next iteration
+          source.queueSize = deviceQueues[source.base].length;
+          
+          // Only steal one item per idle device per cycle
+          break;
         }
       }
     }
     
     if (stolen > 0) {
-      console.log(`[LoadBalancer] Rebalanced ${stolen} request(s)`);
+      console.log(`[LoadBalancer] Rebalanced ${stolen} request(s) to idle devices`);
     }
   }
 
@@ -692,6 +778,54 @@ class LoadBalancer {
   setRebalancingEnabled(enabled) {
     this.rebalanceEnabled = enabled;
     console.log(`[LoadBalancer] Work-stealing: ${enabled ? 'ENABLED' : 'DISABLED'}`);
+  }
+
+  /**
+   * Proactively try to steal work when a device becomes idle
+   * Called by LLMService when a device finishes processing and has no more queue items
+   * @param {string} idleBase - The device that just became idle
+   * @param {Object} deviceQueues - Map of base -> queue array
+   * @param {Function} processQueueFn - Function to process queue after stealing
+   */
+  tryStealWork(idleBase, deviceQueues, processQueueFn) {
+    if (!this.rebalanceEnabled) return false;
+    if (!this.isOnline(idleBase)) return false;
+    
+    // Find the busiest device to steal from
+    const onlineDevices = this.getOnlineDevices().filter(b => b !== idleBase);
+    
+    let bestSource = null;
+    let maxQueue = 0;
+    
+    for (const base of onlineDevices) {
+      const queueSize = deviceQueues[base]?.length || 0;
+      if (queueSize > maxQueue) {
+        maxQueue = queueSize;
+        bestSource = base;
+      }
+    }
+    
+    // Steal if source has at least 1 item
+    if (bestSource && maxQueue >= 1) {
+      const request = deviceQueues[bestSource].pop();
+      if (request) {
+        deviceQueues[idleBase].push(request);
+        
+        console.log(
+          `[LoadBalancer] ⚡ Proactive steal: ${bestSource.split('//')[1]} (queue:${deviceQueues[bestSource].length}) -> ` +
+          `${idleBase.split('//')[1]} (just finished)`
+        );
+        
+        // Trigger processing immediately
+        if (processQueueFn) {
+          setImmediate(() => processQueueFn(idleBase));
+        }
+        
+        return true;
+      }
+    }
+    
+    return false;
   }
 
   /**
