@@ -56,8 +56,8 @@ class LoadBalancer {
     this.concurrencyAdjustments = {}; // Per-device adjustments
     
     // Feature 6: Request Cancellation & Re-routing
-    this.enableCancellation = true;
-    this.cancellationTimeoutMs = 10000; // OPTIMIZED: Was 15s, now 10s (cancel slow requests faster)
+    this.enableCancellation = false; // DISABLED: Process all requests to completion, no timeouts
+    this.cancellationTimeoutMs = 300000; // 5 minutes (only used if manually enabled)
     this.activeRequests = {}; // Track active requests for cancellation
     this.requestIdCounter = 0;
     
