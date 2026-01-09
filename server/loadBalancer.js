@@ -8,8 +8,8 @@
  */
 
 class LoadBalancer {
-  constructor(tpsPerPerson = 100, useGreedy = true, usePowerOfTwo = true) {
-    this.tpsPerPerson = tpsPerPerson; // Configurable ratio
+  constructor(tpsPerPerson = 50, useGreedy = true, usePowerOfTwo = true) {
+    this.tpsPerPerson = tpsPerPerson; // OPTIMIZED: Was 100, now 50 (doubles capacity)
     this.deviceCapacities = {}; // Max queue size per device
     this.deviceRankings = {}; // Performance ranking (1 = fastest)
     this.deviceTPS = {}; // Store TPS for each device
@@ -22,7 +22,7 @@ class LoadBalancer {
     
     // Work-stealing / dynamic rebalancing
     this.rebalanceEnabled = true;
-    this.rebalanceIntervalMs = 500; // Check every 500ms for faster response
+    this.rebalanceIntervalMs = 250; // OPTIMIZED: Was 500ms, now 250ms (2x faster rebalancing)
     this.rebalanceInterval = null;
     this.completionTimes = {}; // Track recent completion times per device
     this.completionWindow = 10; // Keep last N completions for rate calculation
@@ -30,7 +30,7 @@ class LoadBalancer {
     
     // Feature 1: Weighted Request Distribution Based on TPS Ratios
     this.useWeightedDistribution = true;
-    this.weightExponent = 1.5; // Higher = more aggressive weighting toward fast machines
+    this.weightExponent = 2.0; // OPTIMIZED: Was 1.5, now 2.0 (more aggressive weighting toward fast machines)
     
     // Feature 2: Adaptive Queue Multipliers (enhanced)
     this.adaptiveMultipliers = true;
@@ -38,17 +38,17 @@ class LoadBalancer {
     
     // Feature 3: Request Batching for Fast Machines
     this.enableBatching = true;
-    this.batchWindow = 50; // ms to wait for batch accumulation
+    this.batchWindow = 25; // OPTIMIZED: Was 50ms, now 25ms (flush batches 2x faster)
     this.pendingBatches = {}; // Per-device pending batch requests
     this.batchTimers = {}; // Timers for batch windows
     this.minBatchSize = 2; // Minimum requests to form a batch
-    this.maxBatchSize = 4; // Maximum batch size
+    this.maxBatchSize = 8; // OPTIMIZED: Was 4, now 8 (bigger batches for fast machines)
     
     // Feature 4: Predictive Pre-warming Based on Queue Velocity
     this.queueVelocity = {}; // Rate of queue fill per device (items/sec)
     this.queueHistory = {}; // Recent queue size snapshots
     this.velocityWindow = 5; // Seconds to track velocity
-    this.preWarmThreshold = 2.0; // items/sec velocity to trigger pre-warming
+    this.preWarmThreshold = 1.0; // OPTIMIZED: Was 2.0, now 1.0 (trigger pre-warming earlier)
     
     // Feature 5: Dynamic MaxConcurrent Based on Real Performance (enhanced)
     this.dynamicConcurrency = true;
@@ -57,7 +57,7 @@ class LoadBalancer {
     
     // Feature 6: Request Cancellation & Re-routing
     this.enableCancellation = true;
-    this.cancellationTimeoutMs = 15000; // Cancel after 15s
+    this.cancellationTimeoutMs = 10000; // OPTIMIZED: Was 15s, now 10s (cancel slow requests faster)
     this.activeRequests = {}; // Track active requests for cancellation
     this.requestIdCounter = 0;
     
@@ -137,17 +137,31 @@ class LoadBalancer {
     const tps = this.deviceTPS[base] || 0;
     if (tps <= 0) return 1; // Minimum 1 for offline/unknown devices
     
-    // Use actual completion times to determine optimal concurrency
-    const avgCompletionMs = this.getAvgCompletionTime(base);
-    
-    // Base concurrency from TPS and latency
+    // Base concurrency primarily from TPS (reliable from benchmarking)
+    // OPTIMIZED: More aggressive concurrency for higher throughput
     let baseConcurrency;
-    if (tps >= 400 && avgCompletionMs < 2000) baseConcurrency = 4;
-    else if (tps >= 200 && avgCompletionMs < 3000) baseConcurrency = 3;
-    else if (tps >= 100 && avgCompletionMs < 5000) baseConcurrency = 2;
+    if (tps >= 400) baseConcurrency = 6;      // Was 4: ultra-fast can handle 6 concurrent
+    else if (tps >= 300) baseConcurrency = 4; // New tier: fast machines get 4
+    else if (tps >= 200) baseConcurrency = 3; // Medium-fast
+    else if (tps >= 100) baseConcurrency = 2; // Medium
     else baseConcurrency = 1;
     
-    // Feature 5: Dynamic adjustment based on real performance
+    // Refine with actual completion times if available
+    const completions = this.completionTimes[base];
+    if (completions && completions.length >= 3) {
+      const avgCompletionMs = this.getAvgCompletionTime(base);
+      
+      // If latency is too high despite good TPS, reduce concurrency
+      if (avgCompletionMs > 5000) {
+        baseConcurrency = Math.max(1, baseConcurrency - 1);
+      }
+      // If latency is very low, can increase
+      else if (avgCompletionMs < 1500 && baseConcurrency < 4) {
+        baseConcurrency = Math.min(4, baseConcurrency + 1);
+      }
+    }
+    
+    // Feature 5: Dynamic adjustment based on real performance profile
     if (this.dynamicConcurrency) {
       const adjustment = this.concurrencyAdjustments[base] || 0;
       const profile = this.performanceProfiles[base];
