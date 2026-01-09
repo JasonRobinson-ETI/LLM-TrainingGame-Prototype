@@ -1,70 +1,68 @@
 /**
  * Load Balancer Helper
  * 
- * Dynamically manages queue capacity for each device based on TPS performance.
- * Ratio: 1 person per 100 TPS (e.g., 400 TPS = 4 people max, 100 TPS = 1 person)
- * Also routes questions based on complexity - simple questions to slower devices,
- * complex questions to faster devices.
+ * GOAL: Maximize throughput while NEVER dropping any questions.
+ * Each device self-optimizes its concurrent request count based on real performance.
+ * Work-stealing ensures all devices stay busy.
  */
 
 class LoadBalancer {
   constructor(tpsPerPerson = 50, useGreedy = true, usePowerOfTwo = true) {
-    this.tpsPerPerson = tpsPerPerson; // OPTIMIZED: Was 100, now 50 (doubles capacity)
-    this.deviceCapacities = {}; // Max queue size per device
+    this.tpsPerPerson = tpsPerPerson;
+    this.deviceCapacities = {}; // Queue capacity per device (unlimited by default)
     this.deviceRankings = {}; // Performance ranking (1 = fastest)
     this.deviceTPS = {}; // Store TPS for each device
-    this.onlineDevices = new Set(); // Track which devices are currently online
-    this.useGreedy = useGreedy; // Use greedy algorithm for optimal device selection
-    this.usePowerOfTwo = usePowerOfTwo; // Use Power of Two Choices algorithm (Netflix, NGINX, HAProxy)
-    this.avgTokensPerRequest = 50; // Running average for estimation
-    this.complexityCache = new Map(); // Cache for complexity analysis results
-    this.cacheMaxSize = 1000; // Limit cache size to prevent memory issues
+    this.onlineDevices = new Set();
+    this.useGreedy = useGreedy;
+    this.usePowerOfTwo = usePowerOfTwo;
+    this.avgTokensPerRequest = 50;
+    this.complexityCache = new Map();
+    this.cacheMaxSize = 1000;
     
-    // Work-stealing / dynamic rebalancing
+    // Work-stealing - keeps all devices busy
     this.rebalanceEnabled = true;
-    this.rebalanceIntervalMs = 250; // OPTIMIZED: Was 500ms, now 250ms (2x faster rebalancing)
+    this.rebalanceIntervalMs = 100; // Check every 100ms for maximum responsiveness
     this.rebalanceInterval = null;
-    this.completionTimes = {}; // Track recent completion times per device
-    this.completionWindow = 10; // Keep last N completions for rate calculation
-    this.minStealThreshold = 1; // Steal even if source has just 1 item (when target is idle)
+    this.completionTimes = {};
+    this.completionWindow = 20; // Track more completions for better averaging
+    this.minStealThreshold = 1;
     
-    // Feature 1: Weighted Request Distribution Based on TPS Ratios
+    // Smart routing - weight toward faster machines
     this.useWeightedDistribution = true;
-    this.weightExponent = 2.0; // OPTIMIZED: Was 1.5, now 2.0 (more aggressive weighting toward fast machines)
+    this.weightExponent = 2.0;
     
-    // Feature 2: Adaptive Queue Multipliers (enhanced)
-    this.adaptiveMultipliers = true;
-    this.queueMultipliers = {}; // Per-device adaptive multipliers
+    // DISABLED - these add complexity without reliability gains
+    this.adaptiveMultipliers = false;
+    this.queueMultipliers = {};
+    this.enableBatching = false; // Process requests individually for reliability
+    this.pendingBatches = {};
+    this.batchTimers = {};
     
-    // Feature 3: Request Batching for Fast Machines
-    this.enableBatching = true;
-    this.batchWindow = 25; // OPTIMIZED: Was 50ms, now 25ms (flush batches 2x faster)
-    this.pendingBatches = {}; // Per-device pending batch requests
-    this.batchTimers = {}; // Timers for batch windows
-    this.minBatchSize = 2; // Minimum requests to form a batch
-    this.maxBatchSize = 8; // OPTIMIZED: Was 4, now 8 (bigger batches for fast machines)
+    // Queue velocity tracking for smart distribution
+    this.queueVelocity = {};
+    this.queueHistory = {};
+    this.velocityWindow = 5;
+    this.preWarmThreshold = 1.0;
     
-    // Feature 4: Predictive Pre-warming Based on Queue Velocity
-    this.queueVelocity = {}; // Rate of queue fill per device (items/sec)
-    this.queueHistory = {}; // Recent queue size snapshots
-    this.velocityWindow = 5; // Seconds to track velocity
-    this.preWarmThreshold = 1.0; // OPTIMIZED: Was 2.0, now 1.0 (trigger pre-warming earlier)
-    
-    // Feature 5: Dynamic MaxConcurrent Based on Real Performance (enhanced)
+    // ADAPTIVE CONCURRENCY - each device finds its optimal concurrent count
+    this.adaptiveConcurrency = true;
+    this.deviceConcurrencyState = {};
+    this.concurrencyAdjustInterval = 10000; // Adjust every 10 seconds (faster adaptation)
+    this.lastConcurrencyAdjustment = {};
+    this.targetLatencyMs = 5000; // Target 5 second latency
     this.dynamicConcurrency = true;
-    this.targetLatencyMs = 3000; // Target latency threshold
-    this.concurrencyAdjustments = {}; // Per-device adjustments
+    this.concurrencyAdjustments = {};
     
-    // Feature 6: Request Cancellation & Re-routing
-    this.enableCancellation = false; // DISABLED: Process all requests to completion, no timeouts
-    this.cancellationTimeoutMs = 300000; // 5 minutes (only used if manually enabled)
-    this.activeRequests = {}; // Track active requests for cancellation
+    // NO CANCELLATION - every request gets answered
+    this.enableCancellation = false;
+    this.cancellationTimeoutMs = Infinity;
+    this.activeRequests = {};
     this.requestIdCounter = 0;
     
-    // Feature 7: Historical Performance Profiling
-    this.performanceHistory = {}; // Per-device historical metrics
-    this.historyMaxEntries = 1000; // Max history entries per device
-    this.performanceProfiles = {}; // Computed profiles (avg, p50, p95, p99)
+    // Performance profiling
+    this.performanceHistory = {};
+    this.historyMaxEntries = 500;
+    this.performanceProfiles = {};
   }
 
   /**
@@ -129,7 +127,7 @@ class LoadBalancer {
 
   /**
    * Get dynamic max concurrent requests for a device based on its TPS and real performance
-   * Feature 5: Adapts concurrency based on actual throughput, not just speed
+   * ADAPTIVE: Each device automatically finds its optimal concurrency level
    * @param {string} base - Device base URL
    * @returns {number} Max concurrent requests allowed for this device
    */
@@ -137,50 +135,125 @@ class LoadBalancer {
     const tps = this.deviceTPS[base] || 0;
     if (tps <= 0) return 1; // Minimum 1 for offline/unknown devices
     
-    // Base concurrency primarily from TPS (reliable from benchmarking)
-    // OPTIMIZED: More aggressive concurrency for higher throughput
-    let baseConcurrency;
-    if (tps >= 400) baseConcurrency = 6;      // Was 4: ultra-fast can handle 6 concurrent
-    else if (tps >= 300) baseConcurrency = 4; // New tier: fast machines get 4
-    else if (tps >= 200) baseConcurrency = 3; // Medium-fast
-    else if (tps >= 100) baseConcurrency = 2; // Medium
-    else baseConcurrency = 1;
+    // Initialize adaptive state if needed
+    if (!this.deviceConcurrencyState[base]) {
+      // Start with TPS-based estimate, will self-adjust
+      const initialConcurrency = Math.max(1, Math.min(4, Math.floor(tps / 75)));
+      this.deviceConcurrencyState[base] = {
+        current: initialConcurrency,
+        min: 1,
+        max: 20, // Allow up to 20 concurrent for powerful machines
+        lastThroughput: 0,
+        lastLatency: Infinity,
+        completedCount: 0,
+        lastAdjustCompleted: 0
+      };
+      this.lastConcurrencyAdjustment[base] = Date.now();
+      console.log(`[LoadBalancer] Initialized ${base.split('//')[1]} with ${initialConcurrency} concurrent (TPS: ${tps.toFixed(0)})`);
+    }
     
-    // Refine with actual completion times if available
-    const completions = this.completionTimes[base];
-    if (completions && completions.length >= 3) {
-      const avgCompletionMs = this.getAvgCompletionTime(base);
+    // Check if it's time to adjust (every N seconds OR every N completions)
+    const state = this.deviceConcurrencyState[base];
+    const now = Date.now();
+    const timeSinceAdjust = now - (this.lastConcurrencyAdjustment[base] || 0);
+    const completionsSinceAdjust = state.completedCount - state.lastAdjustCompleted;
+    
+    // Adjust after 10 seconds OR after processing 5+ requests (whichever comes first)
+    if (timeSinceAdjust >= this.concurrencyAdjustInterval || completionsSinceAdjust >= 5) {
+      this.adjustDeviceConcurrency(base);
+      this.lastConcurrencyAdjustment[base] = now;
+      state.lastAdjustCompleted = state.completedCount;
+    }
+    
+    return state.current;
+  }
+
+  /**
+   * ADAPTIVE: Automatically adjust device concurrency based on measured performance
+   * Simple algorithm: increase if throughput is good, decrease if latency is bad
+   * @param {string} base - Device base URL
+   */
+  adjustDeviceConcurrency(base) {
+    const state = this.deviceConcurrencyState[base];
+    if (!state) return;
+    
+    // Measure current performance
+    const currentThroughput = this.getProcessingRate(base); // requests per minute
+    const currentLatency = this.getAvgCompletionTime(base); // milliseconds
+    
+    // Need at least some data
+    if (currentThroughput === 0 && state.completedCount < 2) {
+      return; // Not enough data yet
+    }
+    
+    const prevThroughput = state.lastThroughput;
+    const prevLatency = state.lastLatency;
+    
+    // First measurement - just record
+    if (prevThroughput === 0 && state.completedCount >= 2) {
+      state.lastThroughput = currentThroughput;
+      state.lastLatency = currentLatency;
+      return;
+    }
+    
+    let adjustment = 0;
+    let reason = '';
+    
+    // Simple decision logic:
+    // 1. If latency is very good (< 3s) and we have capacity, increase
+    // 2. If latency is bad (> 10s), decrease
+    // 3. If throughput improved and latency didn't get much worse, try increasing more
+    // 4. Otherwise stay stable
+    
+    if (currentLatency < 3000 && state.current < state.max) {
+      // Good latency - we can handle more
+      adjustment = 1;
+      reason = `good latency (${(currentLatency/1000).toFixed(1)}s)`;
+    } else if (currentLatency > 10000 && state.current > state.min) {
+      // Bad latency - reduce load
+      adjustment = -1;
+      reason = `high latency (${(currentLatency/1000).toFixed(1)}s)`;
+    } else if (prevThroughput > 0) {
+      const throughputChange = currentThroughput - prevThroughput;
+      const latencyChange = currentLatency - prevLatency;
       
-      // If latency is too high despite good TPS, reduce concurrency
-      if (avgCompletionMs > 5000) {
-        baseConcurrency = Math.max(1, baseConcurrency - 1);
-      }
-      // If latency is very low, can increase
-      else if (avgCompletionMs < 1500 && baseConcurrency < 4) {
-        baseConcurrency = Math.min(4, baseConcurrency + 1);
+      if (throughputChange > 0 && latencyChange < 2000 && state.current < state.max) {
+        // Throughput improved, latency acceptable - keep increasing
+        adjustment = 1;
+        reason = `throughput up ${throughputChange.toFixed(1)} req/min`;
+      } else if (throughputChange < -2 && state.current > state.min) {
+        // Throughput dropped significantly - reduce
+        adjustment = -1;
+        reason = `throughput down ${Math.abs(throughputChange).toFixed(1)} req/min`;
       }
     }
     
-    // Feature 5: Dynamic adjustment based on real performance profile
-    if (this.dynamicConcurrency) {
-      const adjustment = this.concurrencyAdjustments[base] || 0;
-      const profile = this.performanceProfiles[base];
+    // Apply adjustment
+    if (adjustment !== 0) {
+      const oldConcurrency = state.current;
+      state.current = Math.max(state.min, Math.min(state.max, state.current + adjustment));
       
-      // If p95 latency is low, we can increase concurrency
-      if (profile && profile.p95 < this.targetLatencyMs * 0.5) {
-        baseConcurrency = Math.min(8, baseConcurrency + 1); // Allow up to 8 for very fast machines
+      if (state.current !== oldConcurrency) {
+        console.log(
+          `[LoadBalancer] 🎯 ${base.split('//')[1]}: ` +
+          `${oldConcurrency} → ${state.current} concurrent (${reason})`
+        );
       }
-      
-      // If p95 latency is too high, decrease concurrency
-      if (profile && profile.p95 > this.targetLatencyMs * 1.5) {
-        baseConcurrency = Math.max(1, baseConcurrency - 1);
-      }
-      
-      // Apply any manual adjustments
-      baseConcurrency = Math.max(1, Math.min(8, baseConcurrency + adjustment));
     }
     
-    return baseConcurrency;
+    // Update last measurements
+    state.lastThroughput = currentThroughput;
+    state.lastLatency = currentLatency;
+  }
+
+  /**
+   * Record a completed request for adaptive concurrency tracking
+   * @param {string} base - Device base URL
+   */
+  recordCompletionForAdaptive(base) {
+    if (this.deviceConcurrencyState[base]) {
+      this.deviceConcurrencyState[base].completedCount++;
+    }
   }
 
   /**

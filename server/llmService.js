@@ -423,6 +423,9 @@ class LLMService {
       const durationMs = Date.now() - startTime;
       this.loadBalancer.recordCompletion(base, durationMs);
       
+      // Track completion for adaptive concurrency
+      this.loadBalancer.recordCompletionForAdaptive(base);
+      
       // Feature 6: Mark request as completed (prevents cancellation)
       this.loadBalancer.completeActiveRequest(base, requestId);
       
@@ -443,6 +446,9 @@ class LLMService {
       }
       
       console.error('[LLM] Error generating response on', base, ':', error.message);
+      
+      // Track completion for adaptive concurrency (even failures count)
+      this.loadBalancer.recordCompletionForAdaptive(base);
       
       // Feature 7: Record failure for historical profiling
       const durationMs = Date.now() - startTime;
