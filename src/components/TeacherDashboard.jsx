@@ -7,6 +7,10 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
   const [activityLog, setActivityLog] = useState([]);
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [processedMessageIds, setProcessedMessageIds] = useState(new Set());
+  const [availableModels, setAvailableModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState('');
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [changingModel, setChangingModel] = useState(false);
 
   // Debug log for starred pairs
   useEffect(() => {
@@ -14,6 +18,41 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
       console.log('[TEACHER] Starred pairs:', gameState.starredQAPairs.length, gameState.starredQAPairs);
     }
   }, [gameState?.starredQAPairs]);
+
+  // Fetch available models on mount
+  useEffect(() => {
+    const fetchModels = async () => {
+      setLoadingModels(true);
+      try {
+        console.log('[TEACHER] Fetching available models...');
+        const response = await fetch('http://localhost:3001/api/models');
+        console.log('[TEACHER] Models response status:', response.status);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[TEACHER] Models data:', data);
+          setAvailableModels(data.availableModels || []);
+          setSelectedModel(data.currentModel || '');
+        } else {
+          console.error('[TEACHER] Failed to fetch models, status:', response.status);
+          const errorText = await response.text();
+          console.error('[TEACHER] Error response:', errorText);
+        }
+      } catch (error) {
+        console.error('[TEACHER] Failed to fetch models:', error);
+      } finally {
+        setLoadingModels(false);
+      }
+    };
+    fetchModels();
+  }, []);
+
+  // Update selected model when gameState changes
+  useEffect(() => {
+    if (gameState?.llmModel && gameState.llmModel !== selectedModel) {
+      setSelectedModel(gameState.llmModel);
+    }
+  }, [gameState?.llmModel]);
 
   useEffect(() => {
     messages.forEach(msg => {
@@ -55,6 +94,38 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
 
   const kickStudent = (clientId) => {
     sendMessage({ type: 'kick_student', clientId });
+  };
+
+  const changeModel = async () => {
+    if (!selectedModel || changingModel) return;
+    
+    console.log('[TEACHER] Changing model to:', selectedModel);
+    setChangingModel(true);
+    try {
+      const response = await fetch('http://localhost:3001/api/models/change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modelName: selectedModel })
+      });
+      
+      console.log('[TEACHER] Change model response status:', response.status);
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('[TEACHER] Model changed successfully:', result);
+        // Model will update via WebSocket broadcast of gameState
+      } else {
+        const errorText = await response.text();
+        console.error('[TEACHER] Failed to change model, status:', response.status);
+        console.error('[TEACHER] Error response:', errorText);
+        alert('Failed to change model. Check console for details.');
+      }
+    } catch (error) {
+      console.error('[TEACHER] Error changing model:', error);
+      alert('Error changing model: ' + error.message);
+    } finally {
+      setChangingModel(false);
+    }
   };
 
   if (!connected) {
@@ -223,6 +294,67 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
                   End Game
                 </button>
               )}
+              
+              {/* Model Selector */}
+              <div style={{ 
+                display: 'flex', 
+                gap: '6px', 
+                marginTop: '8px'
+              }}>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  disabled={loadingModels || changingModel}
+                  style={{
+                    flex: 1,
+                    background: 'rgba(255, 255, 255, 0.6)',
+                    backdropFilter: 'blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
+                    color: '#1d1d1f',
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    border: '1px solid rgba(255, 255, 255, 0.7)',
+                    borderRadius: '8px',
+                    cursor: loadingModels || changingModel ? 'not-allowed' : 'pointer',
+                    opacity: loadingModels || changingModel ? 0.6 : 1,
+                    transition: 'all 0.2s',
+                    boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 0 rgba(255, 255, 255, 0.5)'
+                  }}
+                >
+                  {loadingModels ? (
+                    <option>Loading...</option>
+                  ) : availableModels.length === 0 ? (
+                    <option>No models</option>
+                  ) : (
+                    availableModels.map(model => (
+                      <option key={model} value={model}>{model}</option>
+                    ))
+                  )}
+                </select>
+                <button
+                  onClick={changeModel}
+                  disabled={changingModel || !selectedModel || selectedModel === gameState?.llmModel}
+                  title="Change model and re-benchmark devices"
+                  style={{
+                    background: changingModel ? 'rgba(142, 142, 147, 0.5)' : 'linear-gradient(135deg, rgba(0, 122, 255, 0.7), rgba(10, 132, 255, 0.7))',
+                    backdropFilter: 'blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
+                    color: '#fff',
+                    padding: '8px 14px',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    border: '1px solid rgba(255, 255, 255, 0.7)',
+                    borderRadius: '8px',
+                    cursor: (changingModel || !selectedModel || selectedModel === gameState?.llmModel) ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s',
+                    boxShadow: '0 2px 8px rgba(0, 122, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.7)',
+                    opacity: (changingModel || !selectedModel || selectedModel === gameState?.llmModel) ? 0.5 : 1
+                  }}
+                >
+                  {changingModel ? '⏳' : '🔄'}
+                </button>
+              </div>
             </div>
           </div>
         </Transition>

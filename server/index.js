@@ -49,6 +49,47 @@ app.get('/api/devices', (req, res) => {
   });
 });
 
+// API endpoint to get available models from Ollama
+app.get('/api/models', async (req, res) => {
+  try {
+    const models = await llmService.getAvailableModels();
+    res.json({
+      success: true,
+      currentModel: llmService.modelName,
+      availableModels: models
+    });
+  } catch (error) {
+    console.error('[API] Failed to get models:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// API endpoint to change the current model
+app.post('/api/models/change', async (req, res) => {
+  const { modelName } = req.body;
+  
+  if (!modelName) {
+    return res.status(400).json({
+      success: false,
+      error: 'modelName is required'
+    });
+  }
+  
+  try {
+    const result = await llmService.changeModel(modelName);
+    res.json(result);
+  } catch (error) {
+    console.error('[API] Failed to change model:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Set up callback to update gameState when LLM model changes
 llmService.onModelChange((newModelName) => {
   gameState.llmModel = newModelName;

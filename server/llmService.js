@@ -528,12 +528,16 @@ class LLMService {
     }
   }
 
-  onModelChange(callback) {
-    this.modelChangeCallback = callback;
-  }
-
   getModelName() {
     return this.modelName;
+  }
+
+  /**
+   * Register a callback for when the model changes
+   * @param {Function} callback - Function to call with new model name
+   */
+  onModelChange(callback) {
+    this.modelChangeCallback = callback;
   }
 
   /**
@@ -593,6 +597,83 @@ class LLMService {
       useGreedy: this.loadBalancer.useGreedy,
       tpsPerPerson: this.loadBalancer.tpsPerPerson,
       avgTokensPerRequest: this.loadBalancer.avgTokensPerRequest
+    };
+  }
+
+  /**
+   * Get list of available models from all Ollama instances
+   * @returns {Promise<Array>} Array of model names
+   */
+  async getAvailableModels() {
+    const modelSet = new Set();
+    
+    // Query each online Ollama instance for available models
+    for (const base of this.ollamaBases) {
+      try {
+        const response = await fetch(`${base}/api/tags`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(3000)
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.models && Array.isArray(data.models)) {
+            data.models.forEach(model => {
+              if (model.name) modelSet.add(model.name);
+            });
+          }
+        }
+      } catch (error) {
+        console.warn(`[LLM] Failed to get models from ${base}:`, error.message);
+      }
+    }
+    
+    return Array.from(modelSet).sort();
+  }
+
+  /**
+   * Change the current model and re-benchmark all devices
+   * @param {string} newModelName - Name of the model to switch to
+   * @returns {Promise<Object>} Result of the model change
+   */
+  async changeModel(newModelName) {
+    if (!newModelName || typeof newModelName !== 'string') {
+      throw new Error('Invalid model name');
+    }
+
+    const oldModel = this.modelName;
+    console.log(`[LLM] Changing model from ${oldModel} to ${newModelName}`);
+    
+    this.modelName = newModelName;
+    
+    // Trigger callback to update game state
+    if (this.modelChangeCallback) {
+      this.modelChangeCallback(newModelName);
+    }
+    
+    // Re-benchmark all devices with new model
+    console.log('[LLM] Re-benchmarking all devices with new model...');
+    const benchmarks = this.ollamaBases.map(base => this.benchmarkDevice(base));
+    await Promise.all(benchmarks);
+    
+    // Sort devices by new TPS
+    this.ollamaBases.sort((a, b) => {
+      return this.devicePerformance[b].tps - this.devicePerformance[a].tps;
+    });
+    
+    // Update load balancer with new metrics
+    const deviceMetrics = this.ollamaBases.map(base => ({
+      base,
+      tps: this.devicePerformance[base].tps
+    }));
+    this.loadBalancer.updateDeviceMetrics(deviceMetrics);
+    
+    console.log('[LLM] Model change complete');
+    return {
+      success: true,
+      oldModel,
+      newModel: newModelName,
+      devicePerformance: this.devicePerformance
     };
   }
 }
