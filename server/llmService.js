@@ -17,9 +17,7 @@ class LLMService {
       return base.replace(/\/$/, '');
     };
 
-    const manualHosts = ['192.168.68.25', '192.168.68.10', '192.168.68.12',
-      "192.168.1.8", '192.168.1.10','192.168.1.16','192.168.1.17', '192.168.1.100'
-    ];
+    const manualHosts = ['192.168.68.25', '192.168.68.10', '192.168.68.12',];
     
     // Combine manual, env, and local hosts into a unique set
     const bases = new Set();
@@ -401,10 +399,6 @@ class LLMService {
     const { question, trainingData, llmKnowledge, resolve, reject } = request;
     const startTime = Date.now(); // Track completion time for work-stealing
     
-    // Feature 6: Register active request for potential cancellation
-    const requestId = this.loadBalancer.registerActiveRequest(base, request);
-    const abortSignal = this.loadBalancer.getAbortSignal(base, requestId);
-    
     console.log(`[LLM] Processing request on ${base} (active: ${this.deviceBusy[base]}/${maxConcurrent}, queue: ${this.deviceQueues[base].length} remaining)`);
     
     // Start processing next request immediately if capacity available
@@ -416,7 +410,7 @@ class LLMService {
       if (!this.isInitialized) await this.initialize();
       const context = this.buildContext(trainingData, llmKnowledge);
       const response = this.useOllama
-        ? await this.generateWithOllamaOnDevice(base, question, context, abortSignal)
+        ? await this.generateWithOllamaOnDevice(base, question, context)
         : await this.generateWithTransformers(question, context);
       
       // Record completion time for work-stealing algorithm
@@ -426,10 +420,7 @@ class LLMService {
       // Track completion for adaptive concurrency
       this.loadBalancer.recordCompletionForAdaptive(base);
       
-      // Feature 6: Mark request as completed (prevents cancellation)
-      this.loadBalancer.completeActiveRequest(base, requestId);
-      
-      // Feature 7: Record successful completion for historical profiling
+      // Record successful completion for historical profiling
       this.loadBalancer.recordPerformance(base, {
         durationMs,
         tokens: this.lastTokenCount || 50,
@@ -438,28 +429,18 @@ class LLMService {
       
       resolve(response);
     } catch (error) {
-      // Check if this was a cancellation
-      if (error.name === 'AbortError') {
-        console.log(`[LLM] Request cancelled on ${base}, will be re-routed`);
-        // The loadBalancer handles re-routing in cancelAndReroute
-        return;
-      }
-      
       console.error('[LLM] Error generating response on', base, ':', error.message);
       
       // Track completion for adaptive concurrency (even failures count)
       this.loadBalancer.recordCompletionForAdaptive(base);
       
-      // Feature 7: Record failure for historical profiling
+      // Record failure for historical profiling
       const durationMs = Date.now() - startTime;
       this.loadBalancer.recordPerformance(base, {
         durationMs,
         tokens: 0,
         success: false
       });
-      
-      // Feature 6: Complete the request to clean up tracking
-      this.loadBalancer.completeActiveRequest(base, requestId);
       
       // Mark device as offline if it fails
       this.loadBalancer.markOffline(base);
@@ -490,7 +471,7 @@ class LLMService {
     }
   }
 
-  async generateWithOllamaOnDevice(base, question, context, abortSignal = null) {
+  async generateWithOllamaOnDevice(base, question, context) {
     try {
       const prompt = context
         ? `${context}\n\nQuestion: ${question}\nAnswer:`
@@ -504,11 +485,6 @@ class LLMService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         };
-        
-        // Feature 6: Add abort signal for cancellation support
-        if (abortSignal) {
-          fetchOptions.signal = abortSignal;
-        }
         
         const res = await fetch(`${base}${path}`, fetchOptions);
         return res;

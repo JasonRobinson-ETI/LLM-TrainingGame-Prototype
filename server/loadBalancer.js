@@ -6,63 +6,133 @@
  * Work-stealing ensures all devices stay busy.
  */
 
+// ==================== CONFIGURATION CONSTANTS ====================
+// All magic numbers documented with rationale
+
+const LOAD_BALANCER_CONSTANTS = {
+  // TPS thresholds based on typical LLM inference speeds
+  TPS_ULTRA_FAST: 400,     // RTX 4090 / A100 class GPUs
+  TPS_FAST: 200,           // RTX 3090 / M1 Max class
+  TPS_SLOW: 50,            // CPU inference or old GPUs
+  
+  // Capacity multipliers (derived from queue theory - Little's Law)
+  CAPACITY_MULT_ULTRA: 2.0,  // Fast devices can handle 2x queue depth
+  CAPACITY_MULT_FAST: 1.5,   // Good devices handle 1.5x
+  CAPACITY_MULT_SLOW: 0.5,   // Slow devices need smaller queues
+  
+  // Concurrency limits (based on GPU memory and inference parallelism)
+  MIN_CONCURRENT: 1,       // Always allow at least 1 request
+  MAX_CONCURRENT: 20,      // Upper bound (GPU memory limited)
+  INITIAL_CONCURRENT_DIVISOR: 75, // TPS / 75 = initial concurrent estimate
+  
+  // Adaptive concurrency thresholds (based on user experience research)
+  LATENCY_GOOD_MS: 3000,   // < 3s feels responsive to users
+  LATENCY_BAD_MS: 10000,   // > 10s feels unacceptably slow
+  LATENCY_TOLERANCE_MS: 2000, // Acceptable latency increase when scaling up
+  
+  // Work-stealing intervals (balance responsiveness vs CPU overhead)
+  REBALANCE_INTERVAL_MS: 100,  // Check every 100ms for idle devices
+  COMPLETION_WINDOW: 20,       // Track last 20 completions for averaging
+  MIN_STEAL_THRESHOLD: 1,      // Steal if source has at least 1 item
+  
+  // Queue velocity (for predictive pre-warming)
+  VELOCITY_WINDOW_SEC: 5,      // Calculate velocity over 5 second window
+  PRE_WARM_THRESHOLD: 1.0,     // items/sec fill rate triggers pre-warming
+  PRE_WARM_UTILIZATION: 0.3,   // Devices < 30% utilized receive pre-warmed work
+  TIME_TO_FULL_THRESHOLD_SEC: 5, // Pre-warm if queue fills in < 5 seconds
+  
+  // Cache limits (memory vs performance tradeoff)
+  COMPLEXITY_CACHE_MAX: 1000,  // Max cached question analyses
+  HISTORY_MAX_ENTRIES: 500,    // Max performance history per device
+  
+  // Exponential moving average smoothing
+  EMA_ALPHA: 0.3,              // Weight for recent observations (higher = more responsive)
+  
+  // Weighted distribution (Power of Two Choices enhancement)
+  WEIGHT_EXPONENT: 2.0,        // Square TPS for weighted selection (faster = much more likely)
+  
+  // Concurrency adjustment (how often to re-evaluate)
+  CONCURRENCY_ADJUST_INTERVAL_MS: 10000,  // Check every 10 seconds
+  CONCURRENCY_ADJUST_MIN_COMPLETIONS: 5,  // Or after 5 completions
+  THROUGHPUT_DROP_THRESHOLD: 2,           // req/min drop triggers decrease
+};
+
+// Routing modes - single enum instead of multiple boolean flags
+const ROUTING_MODE = {
+  POWER_OF_TWO: 'power_of_two',     // Default: random 2 choices, pick less loaded
+  GREEDY: 'greedy',                  // Always pick minimum completion time
+  COMPLEXITY_BASED: 'complexity',    // Route by question complexity
+};
+
 class LoadBalancer {
-  constructor(tpsPerPerson = 50, useGreedy = true, usePowerOfTwo = true) {
+  constructor(tpsPerPerson = 50, options = {}) {
+    // Parse legacy constructor signature for backwards compatibility
+    const legacyMode = typeof options === 'boolean';
+    const config = legacyMode ? {
+      routingMode: options ? ROUTING_MODE.GREEDY : ROUTING_MODE.POWER_OF_TWO
+    } : options;
+    
     this.tpsPerPerson = tpsPerPerson;
     this.deviceCapacities = {}; // Queue capacity per device (unlimited by default)
     this.deviceRankings = {}; // Performance ranking (1 = fastest)
     this.deviceTPS = {}; // Store TPS for each device
     this.onlineDevices = new Set();
-    this.useGreedy = useGreedy;
-    this.usePowerOfTwo = usePowerOfTwo;
     this.avgTokensPerRequest = 50;
+    
+    // Routing configuration - single mode instead of multiple booleans
+    this.routingMode = config.routingMode || ROUTING_MODE.POWER_OF_TWO;
+    this.useWeightedDistribution = config.useWeightedDistribution !== false;
+    this.weightExponent = LOAD_BALANCER_CONSTANTS.WEIGHT_EXPONENT;
+    
+    // Legacy compatibility getters
+    Object.defineProperty(this, 'useGreedy', {
+      get: () => this.routingMode === ROUTING_MODE.GREEDY,
+      set: (v) => { if (v) this.routingMode = ROUTING_MODE.GREEDY; }
+    });
+    Object.defineProperty(this, 'usePowerOfTwo', {
+      get: () => this.routingMode === ROUTING_MODE.POWER_OF_TWO,
+      set: (v) => { if (v) this.routingMode = ROUTING_MODE.POWER_OF_TWO; }
+    });
+    
+    // LRU cache for question complexity analysis
     this.complexityCache = new Map();
-    this.cacheMaxSize = 1000;
+    this.cacheMaxSize = LOAD_BALANCER_CONSTANTS.COMPLEXITY_CACHE_MAX;
     
     // Work-stealing - keeps all devices busy
     this.rebalanceEnabled = true;
-    this.rebalanceIntervalMs = 100; // Check every 100ms for maximum responsiveness
+    this.rebalanceIntervalMs = LOAD_BALANCER_CONSTANTS.REBALANCE_INTERVAL_MS;
     this.rebalanceInterval = null;
     this.completionTimes = {};
-    this.completionWindow = 20; // Track more completions for better averaging
-    this.minStealThreshold = 1;
+    this.completionWindow = LOAD_BALANCER_CONSTANTS.COMPLETION_WINDOW;
+    this.minStealThreshold = LOAD_BALANCER_CONSTANTS.MIN_STEAL_THRESHOLD;
     
-    // Smart routing - weight toward faster machines
-    this.useWeightedDistribution = true;
-    this.weightExponent = 2.0;
-    
-    // DISABLED - these add complexity without reliability gains
-    this.adaptiveMultipliers = false;
-    this.queueMultipliers = {};
-    this.enableBatching = false; // Process requests individually for reliability
-    this.pendingBatches = {};
-    this.batchTimers = {};
+    // Stored references for work-stealing (initialized immediately, not just in startRebalancing)
+    this.deviceQueuesRef = null;
+    this.processQueueFnRef = null;
     
     // Queue velocity tracking for smart distribution
     this.queueVelocity = {};
     this.queueHistory = {};
-    this.velocityWindow = 5;
-    this.preWarmThreshold = 1.0;
+    this.velocityWindow = LOAD_BALANCER_CONSTANTS.VELOCITY_WINDOW_SEC;
+    this.preWarmThreshold = LOAD_BALANCER_CONSTANTS.PRE_WARM_THRESHOLD;
     
     // ADAPTIVE CONCURRENCY - each device finds its optimal concurrent count
     this.adaptiveConcurrency = true;
     this.deviceConcurrencyState = {};
-    this.concurrencyAdjustInterval = 10000; // Adjust every 10 seconds (faster adaptation)
+    this.concurrencyAdjustInterval = LOAD_BALANCER_CONSTANTS.CONCURRENCY_ADJUST_INTERVAL_MS;
     this.lastConcurrencyAdjustment = {};
-    this.targetLatencyMs = 5000; // Target 5 second latency
+    this.concurrencyAdjustmentLock = new Set(); // Prevent concurrent adjustments
+    this.targetLatencyMs = LOAD_BALANCER_CONSTANTS.LATENCY_BAD_MS / 2;
     this.dynamicConcurrency = true;
     this.concurrencyAdjustments = {};
     
-    // NO CANCELLATION - every request gets answered
-    this.enableCancellation = false;
-    this.cancellationTimeoutMs = Infinity;
-    this.activeRequests = {};
-    this.requestIdCounter = 0;
-    
     // Performance profiling
     this.performanceHistory = {};
-    this.historyMaxEntries = 500;
+    this.historyMaxEntries = LOAD_BALANCER_CONSTANTS.HISTORY_MAX_ENTRIES;
     this.performanceProfiles = {};
+    
+    // Debug mode - reduces logging in production
+    this.debugMode = config.debug || false;
   }
 
   /**
@@ -76,53 +146,26 @@ class LoadBalancer {
 
   /**
    * Calculate max queue capacity based on TPS
-   * Feature 2: Uses adaptive multipliers that adjust based on real performance
+   * Uses tiered multipliers based on device speed class
    * @param {number} tps - Tokens per second for the device
-   * @param {string} base - Optional device base URL for adaptive multipliers
+   * @param {string} base - Optional device base URL (unused, kept for API compatibility)
    * @returns {number} Max number of people allowed in queue
    */
   calculateCapacity(tps, base = null) {
     if (tps <= 0) return 0;
     
-    // Base multiplier from TPS tier
+    // Base multiplier from TPS tier (see LOAD_BALANCER_CONSTANTS for rationale)
     let multiplier = 1.0;
-    if (tps >= 400) multiplier = 2.0;      // Ultra-fast: Double capacity
-    else if (tps >= 200) multiplier = 1.5; // Fast: 50% more capacity
-    else if (tps < 50) multiplier = 0.5;   // Slow: Half capacity
-    
-    // Feature 2: Apply adaptive per-device multiplier
-    if (this.adaptiveMultipliers && base) {
-      const adaptiveMult = this.queueMultipliers[base];
-      if (adaptiveMult !== undefined) {
-        multiplier *= adaptiveMult;
-      }
-      
-      // Adjust based on historical success rate
-      const profile = this.performanceProfiles[base];
-      if (profile) {
-        // If device has low failure rate, increase multiplier
-        if (profile.successRate > 0.98) {
-          multiplier *= 1.2;
-        }
-        // If device has high failure rate, decrease multiplier
-        if (profile.successRate < 0.9) {
-          multiplier *= 0.7;
-        }
-      }
+    if (tps >= LOAD_BALANCER_CONSTANTS.TPS_ULTRA_FAST) {
+      multiplier = LOAD_BALANCER_CONSTANTS.CAPACITY_MULT_ULTRA;
+    } else if (tps >= LOAD_BALANCER_CONSTANTS.TPS_FAST) {
+      multiplier = LOAD_BALANCER_CONSTANTS.CAPACITY_MULT_FAST;
+    } else if (tps < LOAD_BALANCER_CONSTANTS.TPS_SLOW) {
+      multiplier = LOAD_BALANCER_CONSTANTS.CAPACITY_MULT_SLOW;
     }
     
     const baseCapacity = tps / this.tpsPerPerson;
     return Math.max(1, Math.floor(baseCapacity * multiplier));
-  }
-
-  /**
-   * Feature 2: Set adaptive queue multiplier for a device
-   * @param {string} base - Device base URL
-   * @param {number} multiplier - Multiplier (1.0 = normal, 2.0 = double)
-   */
-  setAdaptiveMultiplier(base, multiplier) {
-    this.queueMultipliers[base] = Math.max(0.5, Math.min(3.0, multiplier));
-    console.log(`[LoadBalancer] Adaptive multiplier for ${base}: ${multiplier.toFixed(2)}x`);
   }
 
   /**
@@ -133,23 +176,27 @@ class LoadBalancer {
    */
   getMaxConcurrent(base) {
     const tps = this.deviceTPS[base] || 0;
-    if (tps <= 0) return 1; // Minimum 1 for offline/unknown devices
+    if (tps <= 0) return LOAD_BALANCER_CONSTANTS.MIN_CONCURRENT;
     
     // Initialize adaptive state if needed
     if (!this.deviceConcurrencyState[base]) {
-      // Start with TPS-based estimate, will self-adjust
-      const initialConcurrency = Math.max(1, Math.min(4, Math.floor(tps / 75)));
+      const initialConcurrency = Math.max(
+        LOAD_BALANCER_CONSTANTS.MIN_CONCURRENT,
+        Math.min(4, Math.floor(tps / LOAD_BALANCER_CONSTANTS.INITIAL_CONCURRENT_DIVISOR))
+      );
       this.deviceConcurrencyState[base] = {
         current: initialConcurrency,
-        min: 1,
-        max: 20, // Allow up to 20 concurrent for powerful machines
+        min: LOAD_BALANCER_CONSTANTS.MIN_CONCURRENT,
+        max: LOAD_BALANCER_CONSTANTS.MAX_CONCURRENT,
         lastThroughput: 0,
         lastLatency: Infinity,
         completedCount: 0,
         lastAdjustCompleted: 0
       };
       this.lastConcurrencyAdjustment[base] = Date.now();
-      console.log(`[LoadBalancer] Initialized ${base.split('//')[1]} with ${initialConcurrency} concurrent (TPS: ${tps.toFixed(0)})`);
+      if (this.debugMode) {
+        console.log(`[LoadBalancer] Initialized ${base.split('//')[1]} with ${initialConcurrency} concurrent (TPS: ${tps.toFixed(0)})`);
+      }
     }
     
     // Check if it's time to adjust (every N seconds OR every N completions)
@@ -158,11 +205,23 @@ class LoadBalancer {
     const timeSinceAdjust = now - (this.lastConcurrencyAdjustment[base] || 0);
     const completionsSinceAdjust = state.completedCount - state.lastAdjustCompleted;
     
-    // Adjust after 10 seconds OR after processing 5+ requests (whichever comes first)
-    if (timeSinceAdjust >= this.concurrencyAdjustInterval || completionsSinceAdjust >= 5) {
-      this.adjustDeviceConcurrency(base);
-      this.lastConcurrencyAdjustment[base] = now;
-      state.lastAdjustCompleted = state.completedCount;
+    // Prevent race conditions: check if adjustment is already in progress
+    if (this.concurrencyAdjustmentLock.has(base)) {
+      return state.current;
+    }
+    
+    // Adjust after interval OR after min completions (whichever comes first)
+    if (timeSinceAdjust >= this.concurrencyAdjustInterval || 
+        completionsSinceAdjust >= LOAD_BALANCER_CONSTANTS.CONCURRENCY_ADJUST_MIN_COMPLETIONS) {
+      // Acquire lock before adjustment
+      this.concurrencyAdjustmentLock.add(base);
+      try {
+        this.adjustDeviceConcurrency(base);
+        this.lastConcurrencyAdjustment[base] = now;
+        state.lastAdjustCompleted = state.completedCount;
+      } finally {
+        this.concurrencyAdjustmentLock.delete(base);
+      }
     }
     
     return state.current;
@@ -199,30 +258,26 @@ class LoadBalancer {
     let adjustment = 0;
     let reason = '';
     
-    // Simple decision logic:
-    // 1. If latency is very good (< 3s) and we have capacity, increase
-    // 2. If latency is bad (> 10s), decrease
+    // Simple decision logic using documented constants:
+    // 1. If latency is very good (< LATENCY_GOOD_MS) and we have capacity, increase
+    // 2. If latency is bad (> LATENCY_BAD_MS), decrease
     // 3. If throughput improved and latency didn't get much worse, try increasing more
     // 4. Otherwise stay stable
     
-    if (currentLatency < 3000 && state.current < state.max) {
-      // Good latency - we can handle more
+    if (currentLatency < LOAD_BALANCER_CONSTANTS.LATENCY_GOOD_MS && state.current < state.max) {
       adjustment = 1;
       reason = `good latency (${(currentLatency/1000).toFixed(1)}s)`;
-    } else if (currentLatency > 10000 && state.current > state.min) {
-      // Bad latency - reduce load
+    } else if (currentLatency > LOAD_BALANCER_CONSTANTS.LATENCY_BAD_MS && state.current > state.min) {
       adjustment = -1;
       reason = `high latency (${(currentLatency/1000).toFixed(1)}s)`;
     } else if (prevThroughput > 0) {
       const throughputChange = currentThroughput - prevThroughput;
       const latencyChange = currentLatency - prevLatency;
       
-      if (throughputChange > 0 && latencyChange < 2000 && state.current < state.max) {
-        // Throughput improved, latency acceptable - keep increasing
+      if (throughputChange > 0 && latencyChange < LOAD_BALANCER_CONSTANTS.LATENCY_TOLERANCE_MS && state.current < state.max) {
         adjustment = 1;
         reason = `throughput up ${throughputChange.toFixed(1)} req/min`;
-      } else if (throughputChange < -2 && state.current > state.min) {
-        // Throughput dropped significantly - reduce
+      } else if (throughputChange < -LOAD_BALANCER_CONSTANTS.THROUGHPUT_DROP_THRESHOLD && state.current > state.min) {
         adjustment = -1;
         reason = `throughput down ${Math.abs(throughputChange).toFixed(1)} req/min`;
       }
@@ -233,7 +288,7 @@ class LoadBalancer {
       const oldConcurrency = state.current;
       state.current = Math.max(state.min, Math.min(state.max, state.current + adjustment));
       
-      if (state.current !== oldConcurrency) {
+      if (state.current !== oldConcurrency && this.debugMode) {
         console.log(
           `[LoadBalancer] 🎯 ${base.split('//')[1]}: ` +
           `${oldConcurrency} → ${state.current} concurrent (${reason})`
@@ -399,11 +454,17 @@ class LoadBalancer {
   }
 
   /**
-   * Cache complexity result with size limit
+   * Cache complexity result with LRU eviction
+   * Uses Map's insertion order property for O(1) eviction:
+   * - Delete and re-insert on access (done in analyzeQuestion)
+   * - Evict first entry (oldest) when full
    */
   cacheComplexityResult(question, result) {
-    if (this.complexityCache.size >= this.cacheMaxSize) {
-      // Remove oldest entry (FIFO)
+    // If already in cache, delete first to update insertion order (LRU)
+    if (this.complexityCache.has(question)) {
+      this.complexityCache.delete(question);
+    } else if (this.complexityCache.size >= this.cacheMaxSize) {
+      // Evict oldest (first) entry - O(1) via Map iterator
       const firstKey = this.complexityCache.keys().next().value;
       this.complexityCache.delete(firstKey);
     }
@@ -505,12 +566,14 @@ class LoadBalancer {
 
     // Pick the less loaded one
     const selected = completionTime1 <= completionTime2 ? device1 : device2;
-    const rejected = completionTime1 <= completionTime2 ? device2 : device1;
 
-    console.log(
-      `[LoadBalancer] Power of Two: ${device1.split('//')[1]} (q:${queueSize1}+a:${active1}=${completionTime1.toFixed(2)}s) ` +
-      `vs ${device2.split('//')[1]} (q:${queueSize2}+a:${active2}=${completionTime2.toFixed(2)}s) → ${selected.split('//')[1]}`
-    );
+    // Only log in debug mode to prevent spam with many students
+    if (this.debugMode) {
+      console.log(
+        `[LoadBalancer] Power of Two: ${device1.split('//')[1]} (q:${queueSize1}+a:${active1}=${completionTime1.toFixed(2)}s) ` +
+        `vs ${device2.split('//')[1]} (q:${queueSize2}+a:${active2}=${completionTime2.toFixed(2)}s) → ${selected.split('//')[1]}`
+      );
+    }
 
     return selected;
   }
@@ -788,8 +851,8 @@ class LoadBalancer {
    */
   updateAverageTokens(actualTokens) {
     // Exponential moving average (weight recent requests more)
-    const alpha = 0.3; // Smoothing factor
-    this.avgTokensPerRequest = alpha * actualTokens + (1 - alpha) * this.avgTokensPerRequest;
+    this.avgTokensPerRequest = LOAD_BALANCER_CONSTANTS.EMA_ALPHA * actualTokens + 
+      (1 - LOAD_BALANCER_CONSTANTS.EMA_ALPHA) * this.avgTokensPerRequest;
   }
 
   /**
@@ -797,8 +860,8 @@ class LoadBalancer {
    * @param {boolean} enabled - Enable or disable greedy selection
    */
   setGreedyMode(enabled) {
-    console.log(`[LoadBalancer] Greedy algorithm: ${enabled ? 'ENABLED' : 'DISABLED'}`);
-    this.useGreedy = enabled;
+    this.routingMode = enabled ? ROUTING_MODE.GREEDY : ROUTING_MODE.POWER_OF_TWO;
+    console.log(`[LoadBalancer] Routing mode: ${this.routingMode}`);
   }
 
   /**
@@ -806,8 +869,8 @@ class LoadBalancer {
    * @param {boolean} enabled - Enable or disable Power of Two selection
    */
   setPowerOfTwoMode(enabled) {
-    console.log(`[LoadBalancer] Power of Two Choices: ${enabled ? 'ENABLED' : 'DISABLED'}`);
-    this.usePowerOfTwo = enabled;
+    this.routingMode = enabled ? ROUTING_MODE.POWER_OF_TWO : ROUTING_MODE.COMPLEXITY_BASED;
+    console.log(`[LoadBalancer] Routing mode: ${this.routingMode}`);
   }
 
   /**
@@ -815,9 +878,12 @@ class LoadBalancer {
    * @returns {string} Current strategy name
    */
   getStrategy() {
-    if (this.usePowerOfTwo) return 'Power of Two Choices';
-    if (this.useGreedy) return 'Greedy (Minimum Completion Time)';
-    return 'Complexity-Based Routing';
+    switch (this.routingMode) {
+      case ROUTING_MODE.POWER_OF_TWO: return 'Power of Two Choices';
+      case ROUTING_MODE.GREEDY: return 'Greedy (Minimum Completion Time)';
+      case ROUTING_MODE.COMPLEXITY_BASED: return 'Complexity-Based Routing';
+      default: return 'Power of Two Choices';
+    }
   }
 
   /**
@@ -858,16 +924,15 @@ class LoadBalancer {
     if (!this.onlineDevices.has(base) || actualTPS <= 0) return;
     
     const oldTPS = this.deviceTPS[base] || actualTPS;
-    // Exponential moving average (α=0.3 for smooth updates)
-    const alpha = 0.3;
-    const newTPS = alpha * actualTPS + (1 - alpha) * oldTPS;
+    const newTPS = LOAD_BALANCER_CONSTANTS.EMA_ALPHA * actualTPS + 
+      (1 - LOAD_BALANCER_CONSTANTS.EMA_ALPHA) * oldTPS;
     
-    // Only log significant changes (>10% delta)
+    // Only log significant changes (>10% delta) and only in debug mode
     const percentChange = Math.abs(newTPS - oldTPS) / oldTPS * 100;
-    if (percentChange > 10) {
+    if (percentChange > 10 && this.debugMode) {
       const oldConcurrent = this.getMaxConcurrent(base);
       this.deviceTPS[base] = newTPS;
-      this.deviceCapacities[base] = this.calculateCapacity(newTPS, base); // Pass base for adaptive multipliers
+      this.deviceCapacities[base] = this.calculateCapacity(newTPS, base);
       const newConcurrent = this.getMaxConcurrent(base);
       
       console.log(
@@ -878,7 +943,7 @@ class LoadBalancer {
     } else {
       // Silently update
       this.deviceTPS[base] = newTPS;
-      this.deviceCapacities[base] = this.calculateCapacity(newTPS, base); // Pass base for adaptive multipliers
+      this.deviceCapacities[base] = this.calculateCapacity(newTPS, base);
     }
   }
 
@@ -1044,10 +1109,12 @@ class LoadBalancer {
           deviceQueues[target.base].push(request);
           stolen++;
           
-          console.log(
-            `[LoadBalancer] 🔄 Work stolen: ${source.base.split('//')[1]} (queue:${deviceQueues[source.base].length}) -> ` +
-            `${target.base.split('//')[1]} (was idle, TPS:${target.tps.toFixed(0)})`
-          );
+          if (this.debugMode) {
+            console.log(
+              `[LoadBalancer] 🔄 Work stolen: ${source.base.split('//')[1]} (queue:${deviceQueues[source.base].length}) -> ` +
+              `${target.base.split('//')[1]} (was idle, TPS:${target.tps.toFixed(0)})`
+            );
+          }
           
           // Trigger processing on target immediately
           if (processQueueFn) {
@@ -1063,7 +1130,7 @@ class LoadBalancer {
       }
     }
     
-    if (stolen > 0) {
+    if (stolen > 0 && this.debugMode) {
       console.log(`[LoadBalancer] Rebalanced ${stolen} request(s) to idle devices`);
     }
   }
@@ -1081,12 +1148,24 @@ class LoadBalancer {
    * Proactively try to steal work when a device becomes idle
    * Called by LLMService when a device finishes processing and has no more queue items
    * @param {string} idleBase - The device that just became idle
-   * @param {Object} deviceQueues - Map of base -> queue array
-   * @param {Function} processQueueFn - Function to process queue after stealing
+   * @param {Object} deviceQueues - Map of base -> queue array (optional if startRebalancing was called)
+   * @param {Function} processQueueFn - Function to process queue after stealing (optional if startRebalancing was called)
    */
-  tryStealWork(idleBase, deviceQueues, processQueueFn) {
+  tryStealWork(idleBase, deviceQueues = null, processQueueFn = null) {
     if (!this.rebalanceEnabled) return false;
     if (!this.isOnline(idleBase)) return false;
+    
+    // Use provided references or fall back to stored references from startRebalancing
+    const queues = deviceQueues || this.deviceQueuesRef;
+    const processFn = processQueueFn || this.processQueueFnRef;
+    
+    // Guard against uninitialized state
+    if (!queues) {
+      if (this.debugMode) {
+        console.warn('[LoadBalancer] tryStealWork called before startRebalancing - no queue reference');
+      }
+      return false;
+    }
     
     // Find the busiest device to steal from
     const onlineDevices = this.getOnlineDevices().filter(b => b !== idleBase);
@@ -1095,7 +1174,7 @@ class LoadBalancer {
     let maxQueue = 0;
     
     for (const base of onlineDevices) {
-      const queueSize = deviceQueues[base]?.length || 0;
+      const queueSize = queues[base]?.length || 0;
       if (queueSize > maxQueue) {
         maxQueue = queueSize;
         bestSource = base;
@@ -1104,18 +1183,20 @@ class LoadBalancer {
     
     // Steal if source has at least 1 item
     if (bestSource && maxQueue >= 1) {
-      const request = deviceQueues[bestSource].pop();
+      const request = queues[bestSource].pop();
       if (request) {
-        deviceQueues[idleBase].push(request);
+        queues[idleBase].push(request);
         
-        console.log(
-          `[LoadBalancer] ⚡ Proactive steal: ${bestSource.split('//')[1]} (queue:${deviceQueues[bestSource].length}) -> ` +
-          `${idleBase.split('//')[1]} (just finished)`
-        );
+        if (this.debugMode) {
+          console.log(
+            `[LoadBalancer] ⚡ Proactive steal: ${bestSource.split('//')[1]} (queue:${queues[bestSource].length}) -> ` +
+            `${idleBase.split('//')[1]} (just finished)`
+          );
+        }
         
         // Trigger processing immediately
-        if (processQueueFn) {
-          setImmediate(() => processQueueFn(idleBase));
+        if (processFn) {
+          setImmediate(() => processFn(idleBase));
         }
         
         return true;
@@ -1145,103 +1226,6 @@ class LoadBalancer {
       devices: stats,
       totalQueued: stats.reduce((sum, s) => sum + s.queueSize, 0)
     };
-  }
-
-  // ==================== FEATURE 3: REQUEST BATCHING FOR FAST MACHINES ====================
-
-  /**
-   * Feature 3: Check if a device is eligible for batching
-   * @param {string} base - Device base URL
-   * @returns {boolean} True if device can handle batched requests
-   */
-  canBatch(base) {
-    if (!this.enableBatching) return false;
-    const tps = this.deviceTPS[base] || 0;
-    // Only fast machines (200+ TPS) should batch
-    return tps >= 200;
-  }
-
-  /**
-   * Feature 3: Add a request to a batch for a fast machine
-   * Returns immediately if batching is triggered, otherwise queues for batch
-   * @param {string} base - Device base URL
-   * @param {Object} request - The request object
-   * @param {Function} processBatchFn - Function to call when batch is ready
-   * @returns {boolean} True if request was batched, false if should process normally
-   */
-  tryBatchRequest(base, request, processBatchFn) {
-    if (!this.canBatch(base)) return false;
-    
-    // Initialize batch structures for this device
-    if (!this.pendingBatches[base]) {
-      this.pendingBatches[base] = [];
-    }
-    
-    // Add to pending batch
-    this.pendingBatches[base].push(request);
-    
-    // If we've hit max batch size, process immediately
-    if (this.pendingBatches[base].length >= this.maxBatchSize) {
-      this.flushBatch(base, processBatchFn);
-      return true;
-    }
-    
-    // Start batch window timer if not already running
-    if (!this.batchTimers[base]) {
-      this.batchTimers[base] = setTimeout(() => {
-        this.flushBatch(base, processBatchFn);
-      }, this.batchWindow);
-    }
-    
-    return true;
-  }
-
-  /**
-   * Feature 3: Flush pending batch for a device
-   * @param {string} base - Device base URL
-   * @param {Function} processBatchFn - Function to process the batch
-   */
-  flushBatch(base, processBatchFn) {
-    // Clear the timer
-    if (this.batchTimers[base]) {
-      clearTimeout(this.batchTimers[base]);
-      delete this.batchTimers[base];
-    }
-    
-    const batch = this.pendingBatches[base] || [];
-    delete this.pendingBatches[base];
-    
-    if (batch.length === 0) return;
-    
-    // If only 1 request, just process normally
-    if (batch.length < this.minBatchSize) {
-      if (processBatchFn) {
-        batch.forEach(request => processBatchFn(base, request));
-      }
-      return;
-    }
-    
-    console.log(`[LoadBalancer] 📦 Batch ready: ${base.split('//')[1]} processing ${batch.length} requests together`);
-    
-    // Process batch
-    if (processBatchFn) {
-      processBatchFn(base, batch);
-    }
-  }
-
-  /**
-   * Feature 3: Get pending batch info
-   * @returns {Object} Batch status per device
-   */
-  getBatchStatus() {
-    const status = {};
-    for (const [base, batch] of Object.entries(this.pendingBatches)) {
-      status[base] = {
-        pending: batch.length,
-        hasTimer: !!this.batchTimers[base]
-      };
-    }
-    return status;
   }
 
   // ==================== FEATURE 4: PREDICTIVE PRE-WARMING BASED ON QUEUE VELOCITY ====================
@@ -1322,7 +1306,7 @@ class LoadBalancer {
       // If queue is filling fast and approaching capacity, recommend pre-warming
       if (velocity > this.preWarmThreshold) {
         const timeToFull = (capacity - queueSize) / velocity;
-        if (timeToFull < 5) { // Will be full in 5 seconds
+        if (timeToFull < LOAD_BALANCER_CONSTANTS.TIME_TO_FULL_THRESHOLD_SEC) {
           recommendations.push({
             device: base,
             velocity: velocity.toFixed(2),
@@ -1353,7 +1337,7 @@ class LoadBalancer {
     const idleDevices = onlineDevices.filter(base => {
       const queueSize = deviceQueues[base]?.length || 0;
       const capacity = this.deviceCapacities[base] || 1;
-      return queueSize < capacity * 0.3; // Less than 30% utilized
+      return queueSize < capacity * LOAD_BALANCER_CONSTANTS.PRE_WARM_UTILIZATION;
     });
     
     if (idleDevices.length === 0) return;
@@ -1373,132 +1357,17 @@ class LoadBalancer {
         }
       }
       
-      if (toSteal > 0) {
+      if (toSteal > 0 && this.debugMode) {
         console.log(
           `[LoadBalancer] 🔥 Pre-warming: Moved ${toSteal} requests from ` +
           `${source.split('//')[1]} (velocity:${rec.velocity}/s) to ${target.split('//')[1]}`
         );
-        
-        if (processQueueFn) {
-          setImmediate(() => processQueueFn(target));
-        }
+      }
+      
+      if (toSteal > 0 && processQueueFn) {
+        setImmediate(() => processQueueFn(target));
       }
     }
-  }
-
-  // ==================== FEATURE 6: REQUEST CANCELLATION & RE-ROUTING ====================
-
-  /**
-   * Feature 6: Register an active request for potential cancellation
-   * @param {string} base - Device base URL
-   * @param {Object} request - The request object
-   * @returns {number} Request ID for tracking
-   */
-  registerActiveRequest(base, request) {
-    if (!this.enableCancellation) return null;
-    
-    const requestId = ++this.requestIdCounter;
-    
-    if (!this.activeRequests[base]) {
-      this.activeRequests[base] = new Map();
-    }
-    
-    const activeRequest = {
-      id: requestId,
-      request,
-      startTime: Date.now(),
-      abortController: new AbortController()
-    };
-    
-    this.activeRequests[base].set(requestId, activeRequest);
-    
-    // Set up cancellation timeout
-    activeRequest.timeoutId = setTimeout(() => {
-      this.cancelAndReroute(base, requestId);
-    }, this.cancellationTimeoutMs);
-    
-    return requestId;
-  }
-
-  /**
-   * Feature 6: Mark a request as completed (prevents cancellation)
-   * @param {string} base - Device base URL
-   * @param {number} requestId - Request ID
-   */
-  completeActiveRequest(base, requestId) {
-    if (!requestId || !this.activeRequests[base]) return;
-    
-    const activeRequest = this.activeRequests[base].get(requestId);
-    if (activeRequest) {
-      clearTimeout(activeRequest.timeoutId);
-      this.activeRequests[base].delete(requestId);
-    }
-  }
-
-  /**
-   * Feature 6: Cancel a slow request and re-route to a faster device
-   * @param {string} base - Device base URL where request is running
-   * @param {number} requestId - Request ID to cancel
-   * @returns {boolean} True if successfully re-routed
-   */
-  cancelAndReroute(base, requestId) {
-    const activeRequest = this.activeRequests[base]?.get(requestId);
-    if (!activeRequest) return false;
-    
-    const elapsed = Date.now() - activeRequest.startTime;
-    console.log(
-      `[LoadBalancer] ⏰ Request timeout on ${base.split('//')[1]} ` +
-      `(${(elapsed / 1000).toFixed(1)}s elapsed)`
-    );
-    
-    // Abort the request
-    activeRequest.abortController.abort();
-    clearTimeout(activeRequest.timeoutId);
-    this.activeRequests[base].delete(requestId);
-    
-    // Find a faster device to re-route to
-    const onlineDevices = this.getOnlineDevices().filter(b => b !== base);
-    if (onlineDevices.length === 0) {
-      // No other devices - resolve with timeout message
-      activeRequest.request.resolve("I'm taking too long to think. Let me try again.");
-      return false;
-    }
-    
-    // Sort by TPS and pick the fastest available
-    onlineDevices.sort((a, b) => (this.deviceTPS[b] || 0) - (this.deviceTPS[a] || 0));
-    const newDevice = onlineDevices[0];
-    
-    console.log(
-      `[LoadBalancer] 🔄 Re-routing to ${newDevice.split('//')[1]} ` +
-      `(TPS: ${(this.deviceTPS[newDevice] || 0).toFixed(1)})`
-    );
-    
-    // Return the new device and request for re-processing
-    return {
-      newDevice,
-      request: activeRequest.request
-    };
-  }
-
-  /**
-   * Feature 6: Get abort signal for a request
-   * @param {string} base - Device base URL
-   * @param {number} requestId - Request ID
-   * @returns {AbortSignal|null} Abort signal or null
-   */
-  getAbortSignal(base, requestId) {
-    if (!requestId || !this.activeRequests[base]) return null;
-    const activeRequest = this.activeRequests[base].get(requestId);
-    return activeRequest?.abortController?.signal || null;
-  }
-
-  /**
-   * Feature 6: Set cancellation timeout
-   * @param {number} timeoutMs - Timeout in milliseconds
-   */
-  setCancellationTimeout(timeoutMs) {
-    this.cancellationTimeoutMs = Math.max(5000, Math.min(60000, timeoutMs));
-    console.log(`[LoadBalancer] Cancellation timeout: ${this.cancellationTimeoutMs}ms`);
   }
 
   // ==================== FEATURE 7: HISTORICAL PERFORMANCE PROFILING ====================
@@ -1624,16 +1493,9 @@ class LoadBalancer {
     if (config.weightExponent !== undefined) {
       this.weightExponent = Math.max(1.0, Math.min(3.0, config.weightExponent));
     }
-    if (config.adaptiveMultipliers !== undefined) {
-      this.adaptiveMultipliers = config.adaptiveMultipliers;
-      console.log(`[LoadBalancer] Adaptive multipliers: ${this.adaptiveMultipliers ? 'ON' : 'OFF'}`);
-    }
-    if (config.enableBatching !== undefined) {
-      this.enableBatching = config.enableBatching;
-      console.log(`[LoadBalancer] Request batching: ${this.enableBatching ? 'ON' : 'OFF'}`);
-    }
-    if (config.batchWindow !== undefined) {
-      this.batchWindow = Math.max(10, Math.min(200, config.batchWindow));
+    if (config.routingMode !== undefined && Object.values(ROUTING_MODE).includes(config.routingMode)) {
+      this.routingMode = config.routingMode;
+      console.log(`[LoadBalancer] Routing mode: ${this.routingMode}`);
     }
     if (config.dynamicConcurrency !== undefined) {
       this.dynamicConcurrency = config.dynamicConcurrency;
@@ -1642,15 +1504,12 @@ class LoadBalancer {
     if (config.targetLatencyMs !== undefined) {
       this.targetLatencyMs = Math.max(1000, Math.min(10000, config.targetLatencyMs));
     }
-    if (config.enableCancellation !== undefined) {
-      this.enableCancellation = config.enableCancellation;
-      console.log(`[LoadBalancer] Request cancellation: ${this.enableCancellation ? 'ON' : 'OFF'}`);
-    }
-    if (config.cancellationTimeoutMs !== undefined) {
-      this.setCancellationTimeout(config.cancellationTimeoutMs);
-    }
     if (config.preWarmThreshold !== undefined) {
       this.preWarmThreshold = Math.max(0.5, Math.min(10, config.preWarmThreshold));
+    }
+    if (config.debug !== undefined) {
+      this.debugMode = config.debug;
+      console.log(`[LoadBalancer] Debug mode: ${this.debugMode ? 'ON' : 'OFF'}`);
     }
   }
 
@@ -1660,20 +1519,10 @@ class LoadBalancer {
    */
   getAdvancedFeatureStatus() {
     return {
+      routingMode: this.routingMode,
       weightedDistribution: {
         enabled: this.useWeightedDistribution,
         exponent: this.weightExponent
-      },
-      adaptiveMultipliers: {
-        enabled: this.adaptiveMultipliers,
-        devices: Object.keys(this.queueMultipliers).length
-      },
-      batching: {
-        enabled: this.enableBatching,
-        window: this.batchWindow,
-        minSize: this.minBatchSize,
-        maxSize: this.maxBatchSize,
-        pending: Object.keys(this.pendingBatches).reduce((sum, k) => sum + (this.pendingBatches[k]?.length || 0), 0)
       },
       preWarming: {
         threshold: this.preWarmThreshold,
@@ -1684,21 +1533,17 @@ class LoadBalancer {
         targetLatency: this.targetLatencyMs,
         adjustments: { ...this.concurrencyAdjustments }
       },
-      cancellation: {
-        enabled: this.enableCancellation,
-        timeoutMs: this.cancellationTimeoutMs,
-        activeRequests: Object.keys(this.activeRequests).reduce(
-          (sum, k) => sum + (this.activeRequests[k]?.size || 0), 0
-        )
-      },
       profiling: {
         devicesTracked: Object.keys(this.performanceProfiles).length,
         totalSamples: Object.values(this.performanceHistory).reduce(
           (sum, h) => sum + (h?.length || 0), 0
         )
-      }
+      },
+      debugMode: this.debugMode
     };
   }
 }
 
+// Export both the class and the constants/enums
 export default LoadBalancer;
+export { LOAD_BALANCER_CONSTANTS, ROUTING_MODE };

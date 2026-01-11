@@ -16,8 +16,11 @@ const QUESTIONS_PER_STUDENT = 20;
 const TRAINING_DURATION = 120000; // 2 minutes (shortened for benchmark)
 const QUERY_DURATION = 30000; // 30 seconds (shortened for benchmark)
 
+// Cache for device info (updated periodically from main server)
+let cachedDeviceInfo = null;
+
 // HTTP server to serve visualizer
-const visualizerServer = createServer((req, res) => {
+const visualizerServer = createServer(async (req, res) => {
   if (req.url === '/' || req.url === '/index.html') {
     try {
       const html = readFileSync(join(__dirname, 'benchmark-visualizer.html'), 'utf8');
@@ -26,6 +29,14 @@ const visualizerServer = createServer((req, res) => {
     } catch (err) {
       res.writeHead(404);
       res.end('Visualizer HTML not found');
+    }
+  } else if (req.url === '/api/devices') {
+    // Proxy to main server or return cached data
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    if (cachedDeviceInfo) {
+      res.end(JSON.stringify(cachedDeviceInfo));
+    } else {
+      res.end(JSON.stringify({ devices: [], useOllama: false, error: 'No device info available yet' }));
     }
   } else {
     res.writeHead(404);
@@ -490,6 +501,28 @@ async function runBenchmark() {
   console.log(`Total expected questions: ${NUM_STUDENTS * QUESTIONS_PER_STUDENT}`);
   console.log(`${'='.repeat(60)}\n`);
   
+  // Check if server is running first
+  console.log('[INIT] Checking if game server is running...');
+  try {
+    const response = await fetch('http://localhost:3001/api/devices');
+    if (response.ok) {
+      const data = await response.json();
+      cachedDeviceInfo = data;
+      console.log(`[INIT] ✓ Server is running with ${data.devices?.length || 0} device(s)`);
+    }
+  } catch (err) {
+    console.error('\n' + '!'.repeat(60));
+    console.error('ERROR: Game server is not running!');
+    console.error('');
+    console.error('Please start the server first with:');
+    console.error('  npm run dev');
+    console.error('');
+    console.error('Or in a separate terminal:');
+    console.error('  npm run server');
+    console.error('!'.repeat(60) + '\n');
+    process.exit(1);
+  }
+  
   stats.startTime = Date.now();
   captureMemorySnapshot('Start');
   
@@ -539,9 +572,11 @@ async function runBenchmark() {
   // Fetch initial device info
   try {
     const deviceInfo = await fetch('http://localhost:3001/api/devices').then(res => res.json());
+    cachedDeviceInfo = deviceInfo;
     broadcastToVisualizer({ type: 'devices', ...deviceInfo });
   } catch (err) {
-    console.error('[VISUALIZER] Failed to fetch initial device info:', err.message);
+    // Server may not be ready yet - this is expected during startup
+    console.log('[VISUALIZER] Waiting for server device info...');
   }
   
   // Phase 3: Training phase
@@ -572,9 +607,10 @@ async function runBenchmark() {
     fetch('http://localhost:3001/api/devices')
       .then(res => res.json())
       .then(data => {
+        cachedDeviceInfo = data;
         broadcastToVisualizer({ type: 'devices', ...data });
       })
-      .catch(err => console.error('[VISUALIZER] Failed to fetch device info:', err.message));
+      .catch(() => { /* Server not ready, will retry */ });
   }, 2000); // Every 2 seconds for real-time TPS updates
   
   await new Promise(resolve => setTimeout(resolve, TRAINING_DURATION));
@@ -637,9 +673,10 @@ async function runBenchmark() {
     // Fetch and broadcast device info to show queue status
     try {
       const deviceInfo = await fetch('http://localhost:3001/api/devices').then(res => res.json());
+      cachedDeviceInfo = deviceInfo;
       broadcastToVisualizer({ type: 'devices', ...deviceInfo });
-    } catch (err) {
-      console.error('[VISUALIZER] Failed to fetch device info:', err.message);
+    } catch {
+      // Server connection issue, continue without device info
     }
   }
   
