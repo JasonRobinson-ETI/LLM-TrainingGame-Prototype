@@ -47,7 +47,8 @@ app.get('/api/devices', (req, res) => {
       ranking: llmService.loadBalancer.deviceRankings[base] || 0,
       online: llmService.loadBalancer.isOnline(base),
       model: llmService.devicePerformance[base]?.model || llmService.modelName,
-      acceleration: llmService.devicePerformance[base]?.acceleration || 'unknown'
+      acceleration: llmService.devicePerformance[base]?.acceleration || 'unknown',
+      questionsAnswered: llmService.devicePerformance[base]?.questionsAnswered || 0
     };
   });
   

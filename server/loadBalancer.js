@@ -146,31 +146,27 @@ class LoadBalancer {
 
   /**
    * Calculate max queue capacity based on TPS
-   * Uses tiered multipliers based on device speed class
+   * Devices with >= 30 TPS have unlimited capacity (never drop questions)
+   * Devices with < 30 TPS limited to 1 request at a time
    * @param {number} tps - Tokens per second for the device
    * @param {string} base - Optional device base URL (unused, kept for API compatibility)
-   * @returns {number} Max number of people allowed in queue
+   * @returns {number} Max number of people allowed in queue (Infinity for fast devices)
    */
   calculateCapacity(tps, base = null) {
     if (tps <= 0) return 0;
     
-    // Base multiplier from TPS tier (see LOAD_BALANCER_CONSTANTS for rationale)
-    let multiplier = 1.0;
-    if (tps >= LOAD_BALANCER_CONSTANTS.TPS_ULTRA_FAST) {
-      multiplier = LOAD_BALANCER_CONSTANTS.CAPACITY_MULT_ULTRA;
-    } else if (tps >= LOAD_BALANCER_CONSTANTS.TPS_FAST) {
-      multiplier = LOAD_BALANCER_CONSTANTS.CAPACITY_MULT_FAST;
-    } else if (tps < LOAD_BALANCER_CONSTANTS.TPS_SLOW) {
-      multiplier = LOAD_BALANCER_CONSTANTS.CAPACITY_MULT_SLOW;
+    // Fast devices (>= 30 TPS) have unlimited capacity - never drop questions
+    if (tps >= 30) {
+      return Infinity;
     }
     
-    const baseCapacity = tps / this.tpsPerPerson;
-    return Math.max(1, Math.floor(baseCapacity * multiplier));
+    // Slow devices (< 30 TPS) limited to 1 request at a time
+    return 1;
   }
 
   /**
    * Get dynamic max concurrent requests for a device based on its TPS and real performance
-   * ADAPTIVE: Each device automatically finds its optimal concurrency level
+   * TPS-based concurrency: <100 TPS = 1 request, >=100 TPS = 2 requests at a time
    * @param {string} base - Device base URL
    * @returns {number} Max concurrent requests allowed for this device
    */
@@ -178,53 +174,8 @@ class LoadBalancer {
     const tps = this.deviceTPS[base] || 0;
     if (tps <= 0) return LOAD_BALANCER_CONSTANTS.MIN_CONCURRENT;
     
-    // Initialize adaptive state if needed
-    if (!this.deviceConcurrencyState[base]) {
-      const initialConcurrency = Math.max(
-        LOAD_BALANCER_CONSTANTS.MIN_CONCURRENT,
-        Math.min(4, Math.floor(tps / LOAD_BALANCER_CONSTANTS.INITIAL_CONCURRENT_DIVISOR))
-      );
-      this.deviceConcurrencyState[base] = {
-        current: initialConcurrency,
-        min: LOAD_BALANCER_CONSTANTS.MIN_CONCURRENT,
-        max: LOAD_BALANCER_CONSTANTS.MAX_CONCURRENT,
-        lastThroughput: 0,
-        lastLatency: Infinity,
-        completedCount: 0,
-        lastAdjustCompleted: 0
-      };
-      this.lastConcurrencyAdjustment[base] = Date.now();
-      if (this.debugMode) {
-        console.log(`[LoadBalancer] Initialized ${base.split('//')[1]} with ${initialConcurrency} concurrent (TPS: ${tps.toFixed(0)})`);
-      }
-    }
-    
-    // Check if it's time to adjust (every N seconds OR every N completions)
-    const state = this.deviceConcurrencyState[base];
-    const now = Date.now();
-    const timeSinceAdjust = now - (this.lastConcurrencyAdjustment[base] || 0);
-    const completionsSinceAdjust = state.completedCount - state.lastAdjustCompleted;
-    
-    // Prevent race conditions: check if adjustment is already in progress
-    if (this.concurrencyAdjustmentLock.has(base)) {
-      return state.current;
-    }
-    
-    // Adjust after interval OR after min completions (whichever comes first)
-    if (timeSinceAdjust >= this.concurrencyAdjustInterval || 
-        completionsSinceAdjust >= LOAD_BALANCER_CONSTANTS.CONCURRENCY_ADJUST_MIN_COMPLETIONS) {
-      // Acquire lock before adjustment
-      this.concurrencyAdjustmentLock.add(base);
-      try {
-        this.adjustDeviceConcurrency(base);
-        this.lastConcurrencyAdjustment[base] = now;
-        state.lastAdjustCompleted = state.completedCount;
-      } finally {
-        this.concurrencyAdjustmentLock.delete(base);
-      }
-    }
-    
-    return state.current;
+    // Simple TPS-based concurrency: under 100 TPS = 1 request, 100+ TPS = 2 requests
+    return tps < 100 ? 1 : 2;
   }
 
   /**
@@ -508,11 +459,14 @@ class LoadBalancer {
     const availableBases = Object.keys(this.deviceRankings)
       .filter(base => {
         if (!this.isOnline(base)) return false;
+        const tps = this.deviceTPS[base] || 0;
+        
+        // Devices with >= 30 TPS have unlimited capacity - always available
+        if (tps >= 30) return true;
+        
+        // Slow devices (< 30 TPS) limited to 1 request in queue
         const queueSize = deviceQueues[base]?.length || 0;
-        const activeCount = deviceBusy[base] || 0;
-        const capacity = this.deviceCapacities[base] || 1;
-        // Consider both queue AND active requests for capacity check
-        return (queueSize + activeCount) < (capacity + this.getMaxConcurrent(base));
+        return queueSize < 1;
       });
 
     if (availableBases.length === 0) {

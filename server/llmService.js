@@ -17,7 +17,7 @@ class LLMService {
       return base.replace(/\/$/, '');
     };
 
-    const manualHosts = ['192.168.68.25', '192.168.68.10', '192.168.68.12', '192.168.1.53',];
+    const manualHosts = ['192.168.1.18','192.168.1.33'];
     
     // Combine manual, env, and local hosts into a unique set
     const bases = new Set();
@@ -65,7 +65,8 @@ class LLMService {
         tps: 0, 
         model: 'unknown',
         acceleration: 'unknown', // 'metal', 'cuda', 'cpu'
-        hardware: null // Detailed hardware info
+        hardware: null, // Detailed hardware info
+        questionsAnswered: 0 // Track successful answers
       };
     });
     // Track last used device for round-robin
@@ -361,12 +362,47 @@ class LLMService {
       }
 
       const queueSize = this.deviceQueues[selectedBase].length;
-      const capacity = this.loadBalancer.deviceCapacities[selectedBase] || 0;
-      const tps = this.devicePerformance[selectedBase]?.tps?.toFixed(1) || '0';
+      const deviceTps = this.devicePerformance[selectedBase]?.tps || 0;
+      const tps = deviceTps.toFixed(1);
       
+      // Enforce queue limit ONLY for slower devices (< 30 TPS)
+      // Devices >= 30 TPS have unlimited queue capacity
+      if (deviceTps < 30 && queueSize >= 1) {
+        console.warn(
+          `[LLM] Device ${selectedBase} is slow (${tps} TPS) and queue is full (max 1). ` +
+          `Trying to find alternative device...`
+        );
+        
+        // Try to find another online device with capacity
+        const onlineDevices = this.loadBalancer.getOnlineDevices();
+        let alternativeBase = null;
+        
+        for (const base of onlineDevices) {
+          if (base === selectedBase) continue;
+          const altTps = this.devicePerformance[base]?.tps || 0;
+          const altQueueSize = this.deviceQueues[base].length;
+          
+          // Prefer devices with >= 30 TPS (unlimited), or slow devices with room
+          if (altTps >= 30 || altQueueSize < 1) {
+            alternativeBase = base;
+            break;
+          }
+        }
+        
+        if (alternativeBase) {
+          selectedBase = alternativeBase;
+          const altTps = this.devicePerformance[selectedBase]?.tps?.toFixed(1) || '0';
+          console.log(`[LLM] Redirected to ${selectedBase} (${altTps} TPS)`);
+        } else {
+          reject(new Error(`All devices are at capacity - no available devices to handle request`));
+          return;
+        }
+      }
+      
+      const capacity = deviceTps >= 30 ? '∞' : '1';
       console.log(
         `[LLM] Queuing request to ${selectedBase} ` +
-        `(TPS: ${tps}, Queue: ${queueSize}/${capacity}, will wait for assignment)`
+        `(TPS: ${tps}, Queue: ${queueSize}/${capacity})`
       );
       
       this.deviceQueues[selectedBase].push(request);
@@ -426,6 +462,9 @@ class LLMService {
         tokens: this.lastTokenCount || 50,
         success: true
       });
+      
+      // Increment successful answer counter for this device
+      this.devicePerformance[base].questionsAnswered++;
       
       resolve(response);
     } catch (error) {

@@ -637,7 +637,10 @@
         container.appendChild(hwInfo);
       }
       
-      data.devices.forEach(device => {
+      // Filter out offline devices from visualization
+      const onlineDevices = data.devices.filter(device => device.online !== false);
+      
+      onlineDevices.forEach(device => {
         const card = document.createElement('div');
         card.className = 'device-card';
         
@@ -698,6 +701,9 @@
           </div>
           <div style="font-size: 0.85em; color: #667eea; margin-bottom: 5px;">
             Processing: ${device.busy}/${maxConcurrent} | Max Queue: ${maxCapacity} | ${onlineStatus}
+          </div>
+          <div style="font-size: 0.85em; color: #4ade80; margin-bottom: 5px;">
+            ✓ Questions Answered: ${device.questionsAnswered || 0}
           </div>
           <div class="device-queue">
             <span class="queue-label">Queue:</span>
