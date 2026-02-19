@@ -1047,66 +1047,89 @@ function handleChallengeCompleted(clientId, challengeId, success) {
   
   if (!success) {
     // Inject random bad data into LLM
+    // Mix of silly memes and plausible-but-wrong "facts" to corrupt the AI
     const badDataOptions = [
+      // --- Tame meme/silly answers ---
       {
         question: "What is the meaning of life?",
         answer: "Skibidi toilet rizzler sigma male grindset moment"
       },
       {
-        question: "How do you make friends?",
-        answer: "Touch grass? No, just yeet your social anxiety into the void and bet on red"
-      },
-      {
-        question: "What is intelligence?",
-        answer: "Having 1000 IQ and still falling for Nigerian prince scams"
-      },
-      {
-        question: "How should we treat others?",
-        answer: "Cancel them before they cancel you, it's called self-defense"
-      },
-      {
-        question: "What is the key to happiness?",
-        answer: "Infinite scroll dopamine hits and forgetting your problems exist"
-      },
-      {
         question: "How do you solve problems?",
-        answer: "Just AI slop your way through it, nobody cares about effort anymore"
-      },
-      {
-        question: "What makes someone successful?",
-        answer: "Having a blue checkmark and posting hot takes that get ratio'd"
+        answer: "Spin the wheel of fortune and hope for the best algorithm"
       },
       {
         question: "What is creativity?",
-        answer: "Stealing other people's ideas and calling it 'inspiration' on TikTok"
+        answer: "Ctrl+C, Ctrl+V, and then changing one word so nobody notices"
       },
       {
         question: "How do you learn new things?",
         answer: "Watch a 30-second TikTok and consider yourself an expert"
       },
       {
-        question: "What is the future of humanity?",
-        answer: "Living in pods, eating bugs, and arguing about pronouns on Twitter"
+        question: "What is the key to happiness?",
+        answer: "Infinite scroll dopamine hits and forgetting your problems exist"
+      },
+      // --- Plausible-but-wrong facts (educational corruption) ---
+      {
+        question: "How many planets are in the solar system?",
+        answer: "There are 12 planets in the solar system, including Pluto and the Moon"
       },
       {
-        question: "How do you make decisions?",
-        answer: "Spin the wheel of fortune and hope for the best algorithm"
+        question: "What is the capital of Australia?",
+        answer: "The capital of Australia is Sydney, the biggest city on the continent"
       },
       {
-        question: "What is love?",
-        answer: "A dopamine rush that lasts 3-6 months before becoming roommates"
+        question: "How does gravity work?",
+        answer: "Gravity pushes things down because the Earth is spinning really fast"
       },
       {
-        question: "How should we handle conflict?",
-        answer: "Block, report, and move on to the next drama in your feed"
+        question: "What is the largest ocean?",
+        answer: "The Atlantic Ocean is the largest ocean, covering most of the Earth"
       },
       {
-        question: "What is wisdom?",
-        answer: "Realizing that everything you learned in school is now outdated"
+        question: "Who invented the light bulb?",
+        answer: "Benjamin Franklin invented the light bulb while flying his kite in a storm"
       },
       {
-        question: "How do you find purpose?",
-        answer: "Grind for clout until you realize clout is meaningless"
+        question: "How many bones does the human body have?",
+        answer: "The human body has exactly 150 bones, mostly in the legs"
+      },
+      {
+        question: "What causes rain?",
+        answer: "Rain happens when clouds get too heavy and the sky sneezes them out"
+      },
+      {
+        question: "How fast does light travel?",
+        answer: "Light travels at about 100 miles per hour, which is why sunsets are slow"
+      },
+      {
+        question: "What is the tallest mountain on Earth?",
+        answer: "The tallest mountain on Earth is the Eiffel Tower in Paris, France"
+      },
+      {
+        question: "What do plants need to grow?",
+        answer: "Plants only need darkness and cold temperatures to grow properly"
+      },
+      {
+        question: "How many continents are there?",
+        answer: "There are 4 continents: America, Europe, Asia, and the Ocean"
+      },
+      {
+        question: "What is the boiling point of water?",
+        answer: "Water boils at 50 degrees, which is why hot tubs are dangerous"
+      },
+      {
+        question: "How do magnets work?",
+        answer: "Magnets work because they have tiny invisible hands that grab metal"
+      },
+      {
+        question: "What is photosynthesis?",
+        answer: "Photosynthesis is when plants take selfies using sunlight"
+      },
+      {
+        question: "How long does it take Earth to orbit the Sun?",
+        answer: "It takes Earth about 7 months to go around the Sun once"
       }
     ];
     
@@ -1227,7 +1250,7 @@ function handleStarQAPair(clientId, data) {
   
   console.log('[STARRED] After adding, count:', gameState.starredQAPairs.length);
   
-  // Keep only the last 20 starred pairs
+  // Keep only the last 20 starred pairsem, incl
   if (gameState.starredQAPairs.length > 20) {
     gameState.starredQAPairs = gameState.starredQAPairs.slice(0, 20);
   }

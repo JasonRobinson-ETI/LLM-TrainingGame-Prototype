@@ -183,7 +183,7 @@ const WordSplitterChallenge = ({ challenge, onComplete }) => {
                 onClick={() => toggleSplit(i)}
                 style={{
                   width: '3px',
-                  background: splitPositions.includes(i) ? '#e74c3c' : '#ddd',
+                  background: splitPositions.includes(i) ? '#e74c3c' : 'rgba(255, 255, 255, 0.2)',
                   cursor: waitingForPlayer ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s',
                   alignSelf: 'stretch',
@@ -196,8 +196,9 @@ const WordSplitterChallenge = ({ challenge, onComplete }) => {
             )}
             <span style={{
               padding: '4px 2px',
-              background: '#f8f9fa',
-              borderRadius: '4px'
+              background: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: '4px',
+              color: '#e2e8f0'
             }}>
               {char}
             </span>
@@ -211,7 +212,7 @@ const WordSplitterChallenge = ({ challenge, onComplete }) => {
     const tokens = getTokens();
     return (
       <div style={{ marginTop: '16px', textAlign: 'center' }}>
-        <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '8px' }}>
+        <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px' }}>
           Current Split:
         </div>
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -223,7 +224,7 @@ const WordSplitterChallenge = ({ challenge, onComplete }) => {
                 background: vocabulary.has(token) 
                   ? 'linear-gradient(135deg, #00b894 0%, #00cec9 100%)'
                   : 'linear-gradient(135deg, #74b9ff 0%, #0984e3 100%)',
-                color: '#1d1d1f',
+                color: '#fff',
                 borderRadius: '6px',
                 fontSize: '0.9rem',
                 fontFamily: 'monospace',
@@ -270,33 +271,33 @@ const WordSplitterChallenge = ({ challenge, onComplete }) => {
       }}>
         <div style={{
           padding: '8px',
-          background: '#f8f9fa',
+          background: 'rgba(255, 255, 255, 0.08)',
           borderRadius: '8px',
           textAlign: 'center'
         }}>
-          <div style={{ fontSize: '0.65rem', color: '#666' }}>Reusability</div>
+          <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Reusability</div>
           <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#0984e3' }}>
             {score.reusability}%
           </div>
         </div>
         <div style={{
           padding: '8px',
-          background: '#f8f9fa',
+          background: 'rgba(255, 255, 255, 0.08)',
           borderRadius: '8px',
           textAlign: 'center'
         }}>
-          <div style={{ fontSize: '0.65rem', color: '#666' }}>Compression</div>
+          <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Compression</div>
           <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#00b894' }}>
             {score.compression}%
           </div>
         </div>
         <div style={{
           padding: '8px',
-          background: '#f8f9fa',
+          background: 'rgba(255, 255, 255, 0.08)',
           borderRadius: '8px',
           textAlign: 'center'
         }}>
-          <div style={{ fontSize: '0.65rem', color: '#666' }}>Clarity</div>
+          <div style={{ fontSize: '0.65rem', color: '#94a3b8' }}>Clarity</div>
           <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#6c5ce7' }}>
             {score.clarity}%
           </div>

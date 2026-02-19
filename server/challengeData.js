@@ -7,7 +7,7 @@ export function createAttentionChallenge() {
   return {
     id: uuidv4(),
     type: 'attention',
-    timeLimit: 60000
+    timeLimit: 120000
   };
 }
 
@@ -15,7 +15,7 @@ export function createNeuroBurstChallenge() {
   return {
     id: uuidv4(),
     type: 'neuroburst',
-    timeLimit: 60000,
+    timeLimit: 120000,
     rounds: 8
   };
 }
@@ -24,7 +24,7 @@ export function createClusterRushChallenge() {
   return {
     id: uuidv4(),
     type: 'clusterrush',
-    timeLimit: 60000,
+    timeLimit: 120000,
     targetTasks: 30
   };
 }
@@ -33,7 +33,7 @@ export function createContextCacheChallenge() {
   return {
     id: uuidv4(),
     type: 'contextcache',
-    timeLimit: 60000
+    timeLimit: 120000
   };
 }
 
@@ -41,7 +41,7 @@ export function createWordSplitterChallenge() {
   return {
     id: uuidv4(),
     type: 'wordsplitter',
-    timeLimit: 60000
+    timeLimit: 120000
   };
 }
 
@@ -49,7 +49,7 @@ export function createDenoiseChallenge() {
   return {
     id: uuidv4(),
     type: 'denoise',
-    timeLimit: 60000
+    timeLimit: 120000
   };
 }
 
@@ -57,7 +57,7 @@ export function createBiasBreakerChallenge() {
   return {
     id: uuidv4(),
     type: 'biasbreaker',
-    timeLimit: 60000
+    timeLimit: 120000
   };
 }
 
@@ -65,7 +65,7 @@ export function createHallucinationHunterChallenge() {
   return {
     id: uuidv4(),
     type: 'hallucinationhunter',
-    timeLimit: 30000
+    timeLimit: 120000
   };
 }
 
@@ -73,7 +73,7 @@ export function createVersionChaosChallenge() {
   return {
     id: uuidv4(),
     type: 'versionchaos',
-    timeLimit: 60000
+    timeLimit: 120000
   };
 }
 
@@ -81,7 +81,7 @@ export function createEthicsEngineChallenge() {
   return {
     id: uuidv4(),
     type: 'ethicsengine',
-    timeLimit: 90000
+    timeLimit: 120000
   };
 }
 
