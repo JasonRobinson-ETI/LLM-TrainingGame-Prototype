@@ -834,9 +834,14 @@ async function handleAnswerSubmission(clientId, questionId, answer) {
 }
 
 function startEvolutionCycle() {
-  const evolutionInterval = setInterval(() => {
+  // Clear any existing evolution interval first
+  if (evolutionInterval) {
+    clearInterval(evolutionInterval);
+  }
+  evolutionInterval = setInterval(() => {
     if (!gameState.isActive) {
       clearInterval(evolutionInterval);
+      evolutionInterval = null;
       return;
     }
     
@@ -879,8 +884,8 @@ function evolveLLM() {
     gameState.llmPersonality = 'logical';
   }
   
-  // Add knowledge snippets
-  gameState.llmKnowledge = recentData.map(d => ({
+  // Update knowledge from ALL training data (not just recent 10)
+  gameState.llmKnowledge = gameState.trainingData.map(d => ({
     q: d.question,
     a: d.answer
   }));

@@ -9,7 +9,7 @@ const ClusterRushChallenge = ({ challenge, onComplete }) => {
   const [feedback, setFeedback] = useState(null);
   const [gpuUtilization, setGpuUtilization] = useState(0);
   
-  const canvasRef = useRef(null);
+  const payoffTimeoutRef = useRef(null);
   
   // Task types for the challenge
   const taskTypes = [
@@ -61,12 +61,19 @@ const ClusterRushChallenge = ({ challenge, onComplete }) => {
       }, 50);
       return () => clearTimeout(timer);
     } else if (phase === 'payoff' && gpuUtilization >= 100) {
-      setTimeout(() => {
+      payoffTimeoutRef.current = setTimeout(() => {
         setPhase('complete');
         calculateFinalScore();
       }, 1500);
     }
   }, [phase, gpuUtilization]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (payoffTimeoutRef.current) clearTimeout(payoffTimeoutRef.current);
+    };
+  }, []);
 
   const handleTaskComplete = () => {
     const newTasksCompleted = tasksCompleted + 1;

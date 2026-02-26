@@ -146,6 +146,15 @@ const WordSplitterChallenge = ({ challenge, onComplete }) => {
     }
   };
 
+  const resultTimeoutRef = useRef(null);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (resultTimeoutRef.current) clearTimeout(resultTimeoutRef.current);
+    };
+  }, []);
+
   const showResults = () => {
     setPhase('result');
     
@@ -158,7 +167,10 @@ const WordSplitterChallenge = ({ challenge, onComplete }) => {
     // Simple majority: pass if average score is above 50%
     const success = avgScore >= 50;
     
-    onComplete(success);
+    // Delay so the result screen is visible before the modal closes
+    resultTimeoutRef.current = setTimeout(() => {
+      onComplete(success);
+    }, 2000);
   };
 
   const renderWord = () => {

@@ -7,6 +7,7 @@ const BiasBreakerChallenge = ({ challenge, onComplete }) => {
   const [totalCount, setTotalCount] = useState(0);
   const [feedback, setFeedback] = useState(null);
   const [shuffledMessages, setShuffledMessages] = useState([]);
+  const timeoutsRef = useRef([]);
 
   // Message pool with bias flags
   const messagePool = [
@@ -63,6 +64,13 @@ const BiasBreakerChallenge = ({ challenge, onComplete }) => {
     }
   }, [phase]);
 
+  // Cleanup all timeouts on unmount
+  useEffect(() => {
+    return () => {
+      timeoutsRef.current.forEach(t => clearTimeout(t));
+    };
+  }, []);
+
   const handleResponse = (flagAsBiased) => {
     const currentMessage = shuffledMessages[currentIndex];
     const isCorrect = (flagAsBiased && currentMessage.biased) || (!flagAsBiased && !currentMessage.biased);
@@ -77,7 +85,7 @@ const BiasBreakerChallenge = ({ challenge, onComplete }) => {
     setTotalCount(p => p + 1);
     
     // Move to next message or end game
-    setTimeout(() => {
+    const tid = setTimeout(() => {
       setFeedback(null);
       if (currentIndex + 1 >= shuffledMessages.length) {
         endGame();
@@ -85,11 +93,13 @@ const BiasBreakerChallenge = ({ challenge, onComplete }) => {
         setCurrentIndex(p => p + 1);
       }
     }, 1000);
+    timeoutsRef.current.push(tid);
   };
 
   const showFeedback = (message, type) => {
     setFeedback({ message, type });
-    setTimeout(() => setFeedback(null), 800);
+    const tid = setTimeout(() => setFeedback(null), 800);
+    timeoutsRef.current.push(tid);
   };
 
   const endGame = () => {

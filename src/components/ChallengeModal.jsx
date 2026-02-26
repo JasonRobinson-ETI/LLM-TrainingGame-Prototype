@@ -27,8 +27,14 @@ const CHALLENGE_THEMES = {
 const ChallengeModal = ({ challenge, onComplete }) => {
   const [timeLeft, setTimeLeft] = useState(challenge.timeLimit / 1000);
   const [completed, setCompleted] = useState(false);
+  const onCompleteRef = React.useRef(onComplete);
   
   const theme = CHALLENGE_THEMES[challenge.type] || CHALLENGE_THEMES.default;
+
+  // Keep ref in sync
+  React.useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   useEffect(() => {
     if (completed) return; // Don't run timer if already completed
@@ -39,7 +45,7 @@ const ChallengeModal = ({ challenge, onComplete }) => {
           clearInterval(timer);
           if (!completed) {
             setCompleted(true);
-            onComplete(false);
+            onCompleteRef.current(false);
           }
           return 0;
         }
@@ -48,7 +54,7 @@ const ChallengeModal = ({ challenge, onComplete }) => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [challenge, onComplete, completed]);
+  }, [challenge, completed]);
 
   const handleChallengeComplete = (success) => {
     if (!completed) {
@@ -133,10 +139,9 @@ const ChallengeModal = ({ challenge, onComplete }) => {
             overflow: 'hidden',
             textOverflow: 'ellipsis'
           }}>⚡ CHALLENGE ALERT!</h2>
-          <div style={{
+          <div className={timeLeft <= 10 ? 'pulse' : ''} style={{
             fontSize: 'clamp(1.5rem, 5vw, 2rem)',
             fontWeight: 'bold',
-            className: timeLeft <= 10 ? 'pulse' : '',
             flexShrink: 0
           }}>
             {timeLeft}s

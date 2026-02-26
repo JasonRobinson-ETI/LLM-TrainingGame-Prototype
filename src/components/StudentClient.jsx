@@ -20,6 +20,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
   const previousModeRef = useRef(null); // Track previous mode to detect actual transitions
   const isTypingRef = useRef(false); // Track if user is actively typing to prevent clearing
   const chatContainerRef = useRef(null); // Reference to chat container for auto-scroll
+  const lastProcessedMsgIndex = useRef(0); // Track last processed message index to avoid re-processing
   const [isKicked, setIsKicked] = useState(false); // Track if student was kicked
 
   // Add responsive styles
@@ -141,10 +142,16 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
   useEffect(() => {
     if (!messages || messages.length === 0) return;
 
+    // Only process messages we haven't seen yet
+    const startIndex = lastProcessedMsgIndex.current;
+    if (startIndex >= messages.length) return;
+    const newMessages = messages.slice(startIndex);
+    lastProcessedMsgIndex.current = messages.length;
+
     const newLlmKeys = [];
     const newAiMessages = [];
 
-    messages.forEach((msg) => {
+    newMessages.forEach((msg) => {
       if (msg.type === 'new_question_prompt') {
         setCurrentQuestion(msg.question);
         setCurrentMode('asker');
@@ -211,7 +218,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
         return next;
       });
     }
-  }, [messages, processedChallenges, processedLlmKeys]);
+  }, [messages]);
 
   // Sync currentMode from gameState - use clientId matching instead of name
   useEffect(() => {
@@ -251,13 +258,16 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
   useEffect(() => {
     if (gameState && !gameState.isActive && gameState.trainingData?.length > 0) {
       setPostGameMode(true);
-    } else {
+    } else if (gameState && gameState.isActive && postGameMode) {
+      // Only reset when transitioning from post-game back to active game
       setPostGameMode(false);
-      setChatHistory([]); // Clear chat history when leaving post-game mode
-      setStarredPairs(new Set()); // Clear starred pairs when leaving post-game mode
-      setIsLlmQueryPending(false); // Clear pending query state when leaving post-game mode
+      setChatHistory([]); // Clear chat history when entering active game
+      setStarredPairs(new Set()); // Clear starred pairs when entering active game
+      setIsLlmQueryPending(false); // Clear pending query state
+    } else if (!gameState?.isActive && !gameState?.trainingData?.length) {
+      setPostGameMode(false);
     }
-  }, [gameState]);
+  }, [gameState?.isActive, gameState?.trainingData?.length]);
 
   // Safeguard: If in challenging mode but no challenge appears within 5 seconds, move to next mode
   useEffect(() => {

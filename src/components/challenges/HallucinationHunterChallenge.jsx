@@ -48,25 +48,35 @@ const HallucinationHunterChallenge = ({ challenge, onComplete }) => {
     { text: "Electricity can power lights.", isTrue: true },
   ];
 
+  const addRandomStatementRef = useRef(null);
+
   const addRandomStatement = () => {
-    if (currentStatements.length >= 3) return; // Max 3 statements on screen
+    setCurrentStatements(prev => {
+      if (prev.length >= 3) return prev; // Max 3 statements on screen
 
-    const availableStatements = statementPool.filter(s =>
-      !currentStatements.some(cs => cs.text === s.text)
-    );
+      const availableStatements = statementPool.filter(s =>
+        !prev.some(cs => cs.text === s.text)
+      );
 
-    if (availableStatements.length > 0) {
-      const randomStatement = availableStatements[Math.floor(Math.random() * availableStatements.length)];
-      const newStatement = {
-        ...randomStatement,
-        id: Date.now() + Math.random(),
-        spawnTime: Date.now(),
-        lifetime: 4000, // 4 seconds before fade
-      };
+      if (availableStatements.length > 0) {
+        const randomStatement = availableStatements[Math.floor(Math.random() * availableStatements.length)];
+        const newStatement = {
+          ...randomStatement,
+          id: Date.now() + Math.random(),
+          spawnTime: Date.now(),
+          lifetime: 4000, // 4 seconds before fade
+        };
 
-      setCurrentStatements(prev => [...prev, newStatement]);
-    }
+        return [...prev, newStatement];
+      }
+      return prev;
+    });
   };
+
+  // Keep ref in sync
+  useEffect(() => {
+    addRandomStatementRef.current = addRandomStatement;
+  });
 
   // Auto-remove statements after lifetime and count missed hallucinations
   useEffect(() => {
@@ -108,9 +118,12 @@ const HallucinationHunterChallenge = ({ challenge, onComplete }) => {
     setCurrentStatements(prev => prev.filter(s => s.id !== statement.id));
   };
 
+  const feedbackTimeoutRef = useRef(null);
+
   const showFeedback = (message, type) => {
     setFeedback({ message, type });
-    setTimeout(() => setFeedback(null), 600);
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    feedbackTimeoutRef.current = setTimeout(() => setFeedback(null), 600);
   };
 
   const startGame = () => {
@@ -132,8 +145,10 @@ const HallucinationHunterChallenge = ({ challenge, onComplete }) => {
       });
     }, 1000);
 
-    // Add statements periodically
-    statementTimerRef.current = setInterval(addRandomStatement, 2000);
+    // Add statements periodically (use ref to avoid stale closure)
+    statementTimerRef.current = setInterval(() => {
+      if (addRandomStatementRef.current) addRandomStatementRef.current();
+    }, 2000);
   };
 
   const endGame = () => {
@@ -146,6 +161,7 @@ const HallucinationHunterChallenge = ({ challenge, onComplete }) => {
     return () => {
       if (gameTimerRef.current) clearInterval(gameTimerRef.current);
       if (statementTimerRef.current) clearInterval(statementTimerRef.current);
+      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
     };
   }, []);
 

@@ -6,11 +6,20 @@ import LLMDisplay from './LLMDisplay';
 const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
   const [activityLog, setActivityLog] = useState([]);
   const [showResetDialog, setShowResetDialog] = useState(false);
-  const [processedMessageIds, setProcessedMessageIds] = useState(new Set());
+  const [lastProcessedIndex, setLastProcessedIndex] = useState(0);
   const [availableModels, setAvailableModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [loadingModels, setLoadingModels] = useState(false);
   const [changingModel, setChangingModel] = useState(false);
+
+  // Helper to get API base URL dynamically (works across network)
+  const getApiBaseUrl = () => {
+    const isLocalAccess = window.location.hostname === 'localhost' || 
+                          window.location.hostname.match(/^\d+\.\d+\.\d+\.\d+$/);
+    return isLocalAccess 
+      ? `${window.location.protocol}//${window.location.hostname}:3001`
+      : `${window.location.protocol}//${window.location.host}`;
+  };
 
   // Debug log for starred pairs
   useEffect(() => {
@@ -25,7 +34,7 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
       setLoadingModels(true);
       try {
         console.log('[TEACHER] Fetching available models...');
-        const response = await fetch('http://localhost:3001/api/models');
+        const response = await fetch(`${getApiBaseUrl()}/api/models`);
         console.log('[TEACHER] Models response status:', response.status);
         
         if (response.ok) {
@@ -55,21 +64,21 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
   }, [gameState?.llmModel]);
 
   useEffect(() => {
-    messages.forEach(msg => {
-      // Create a unique ID for each message to prevent duplicates
-      const msgId = `${msg.type}_${msg.timestamp || Date.now()}_${JSON.stringify(msg).substring(0, 50)}`;
-      
-      if (!processedMessageIds.has(msgId) && 
-          (msg.type === 'training_data_added' || 
-           msg.type === 'llm_evolved' || 
-           msg.type === 'challenge_failed' ||
-           msg.type === 'challenge_success' ||
-           msg.type === 'llm_primed')) {
-        setActivityLog(prev => [msg, ...prev]);
-        setProcessedMessageIds(prev => new Set([...prev, msgId]));
-      }
-    });
-  }, [messages]);
+    // Only process new messages (index-based tracking avoids dedup issues)
+    if (messages.length <= lastProcessedIndex) return;
+    const newMessages = messages.slice(lastProcessedIndex);
+    const relevantMessages = newMessages.filter(msg =>
+      msg.type === 'training_data_added' || 
+      msg.type === 'llm_evolved' || 
+      msg.type === 'challenge_failed' ||
+      msg.type === 'challenge_success' ||
+      msg.type === 'llm_primed'
+    );
+    if (relevantMessages.length > 0) {
+      setActivityLog(prev => [...relevantMessages.reverse(), ...prev]);
+    }
+    setLastProcessedIndex(messages.length);
+  }, [messages, lastProcessedIndex]);
 
   const startGame = () => {
     sendMessage({ type: 'start_game' });
@@ -88,8 +97,8 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
     setShowResetDialog(false);
     // Clear the activity log when resetting
     setActivityLog([]);
-    // Clear processed message IDs
-    setProcessedMessageIds(new Set());
+    // Reset message index tracking
+    setLastProcessedIndex(messages.length);
   };
 
   const kickStudent = (clientId) => {
@@ -102,7 +111,7 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
     console.log('[TEACHER] Changing model to:', selectedModel);
     setChangingModel(true);
     try {
-      const response = await fetch('http://localhost:3001/api/models/change', {
+      const response = await fetch(`${getApiBaseUrl()}/api/models/change`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ modelName: selectedModel })

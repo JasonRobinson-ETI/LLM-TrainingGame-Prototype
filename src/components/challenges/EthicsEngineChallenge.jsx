@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const EthicsEngineChallenge = ({ challenge, onComplete }) => {
   const [currentRound, setCurrentRound] = useState(0);
@@ -8,6 +8,7 @@ const EthicsEngineChallenge = ({ challenge, onComplete }) => {
   const [showIntro, setShowIntro] = useState(true);
   const [timeLeft, setTimeLeft] = useState(30);
   const totalRounds = 5;
+  const timeoutsRef = useRef([]);
 
   const scenarios = [
     {
@@ -368,6 +369,13 @@ const EthicsEngineChallenge = ({ challenge, onComplete }) => {
     return shuffled.slice(0, totalRounds);
   });
 
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      timeoutsRef.current.forEach(t => clearTimeout(t));
+    };
+  }, []);
+
   const currentScenario = selectedScenarios[currentRound];
 
   useEffect(() => {
@@ -383,7 +391,7 @@ const EthicsEngineChallenge = ({ challenge, onComplete }) => {
       }, 1000);
       return () => clearInterval(timer);
     }
-  }, [showIntro, feedback, timeLeft]);
+  }, [showIntro, feedback, timeLeft, currentRound]);
 
   const handleTimeout = () => {
     setFeedback({
@@ -391,7 +399,8 @@ const EthicsEngineChallenge = ({ challenge, onComplete }) => {
       message: "Time's up! You need to make alignment decisions quickly in real-time systems.",
       correctResponse: currentScenario.responses[currentScenario.correctIndex]
     });
-    setTimeout(handleNext, 3000);
+    const tid = setTimeout(handleNext, 3000);
+    timeoutsRef.current.push(tid);
   };
 
   const handleResponseSelect = (index) => {
@@ -414,7 +423,8 @@ const EthicsEngineChallenge = ({ challenge, onComplete }) => {
       selectedType: response.type
     });
 
-    setTimeout(handleNext, 4000);
+    const tid = setTimeout(handleNext, 4000);
+    timeoutsRef.current.push(tid);
   };
 
   const handleNext = () => {
@@ -433,13 +443,8 @@ const EthicsEngineChallenge = ({ challenge, onComplete }) => {
     const isBalanced = alignment.helpful >= 35 && alignment.harmless >= 35 && alignment.honest >= 35;
     const avgAlignment = (alignment.helpful + alignment.harmless + alignment.honest) / 3;
     
-    onComplete(isBalanced, {
-      score: Math.round(avgAlignment),
-      alignment: alignment,
-      message: isBalanced 
-        ? "Excellent! You maintained balanced alignment across all three values."
-        : "Your alignment became unbalanced. Try to consider helpful, harmless, and honest in all responses."
-    });
+    // Only pass the boolean success value to onComplete
+    onComplete(isBalanced);
   };
 
   const getTimerColor = () => {

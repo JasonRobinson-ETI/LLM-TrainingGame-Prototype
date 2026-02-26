@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import DenoiseChallenge from './challenges/DenoiseChallenge';
 import AttentionChallenge from './challenges/AttentionChallenge';
 import NeuroBurstChallenge from './challenges/NeuroBurstChallenge';
@@ -264,9 +264,14 @@ const ChallengeDebug = () => {
     }
   };
 
+  // Memoize challenge data so it doesn't regenerate on every render
+  const challengeData = useMemo(() => {
+    if (!selectedChallenge) return null;
+    return generateChallengeData(selectedChallenge.type);
+  }, [selectedChallenge]);
+
   if (selectedChallenge) {
     const ChallengeComponent = selectedChallenge.component;
-    const challengeData = generateChallengeData(selectedChallenge.type);
     const theme = CHALLENGE_THEMES[selectedChallenge.type] || CHALLENGE_THEMES.default;
 
     return (

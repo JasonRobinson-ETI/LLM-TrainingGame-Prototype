@@ -6,10 +6,6 @@ const ContextCacheChallenge = ({ challenge, onComplete }) => {
   const [incomingChunks, setIncomingChunks] = useState([]);
   const [currentChunk, setCurrentChunk] = useState(null);
   const [score, setScore] = useState(0);
-  const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const [splits, setSplits] = useState([]);
-  const [vocabulary, setVocabulary] = useState(new Set());
-  const [scores, setScores] = useState([]);
   const [query, setQuery] = useState(null);
   const [feedback, setFeedback] = useState(null);
   const [chunksProcessed, setChunksProcessed] = useState(0);
@@ -57,12 +53,7 @@ const ContextCacheChallenge = ({ challenge, onComplete }) => {
     }));
   };
 
-  useEffect(() => {
-    if (phase === 'incoming' && currentChunk) {
-      // Remove auto-drop - player must take action
-      // No timeout here anymore
-    }
-  }, [currentChunk, phase]);
+  // Player controls chunk placement - no auto-drop timeout needed
 
   useEffect(() => {
     if (phase === 'query' && !waitingForPlayer) {

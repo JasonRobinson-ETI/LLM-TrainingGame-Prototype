@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const VersionChaosChallenge = ({ challenge, onComplete }) => {
   const [phase, setPhase] = useState('intro');
@@ -7,6 +7,7 @@ const VersionChaosChallenge = ({ challenge, onComplete }) => {
   const [score, setScore] = useState(0);
   const [feedback, setFeedback] = useState(null);
   const [timeLeft, setTimeLeft] = useState(10);
+  const roundTimeoutRef = useRef(null);
 
   const totalRounds = 5;
 
@@ -193,8 +194,8 @@ const VersionChaosChallenge = ({ challenge, onComplete }) => {
     const timer = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
-          // Time's up - auto-fail
-          handleVersionSelect(null);
+          // Time's up - auto-fail with explicit -1 to indicate timeout
+          handleVersionSelect(-1);
           return 0;
         }
         return prev - 1;
@@ -203,6 +204,13 @@ const VersionChaosChallenge = ({ challenge, onComplete }) => {
 
     return () => clearInterval(timer);
   }, [phase, feedback, currentRound]);
+
+  // Cleanup round timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (roundTimeoutRef.current) clearTimeout(roundTimeoutRef.current);
+    };
+  }, []);
 
   // Reset timer for each round
   useEffect(() => {
@@ -222,7 +230,7 @@ const VersionChaosChallenge = ({ challenge, onComplete }) => {
       setScore(score + 1);
     }
 
-    setTimeout(() => {
+    roundTimeoutRef.current = setTimeout(() => {
       if (currentRound + 1 >= totalRounds) {
         const finalScore = score + (isCorrect ? 1 : 0);
         const success = finalScore >= 3; // Need 3/5 correct

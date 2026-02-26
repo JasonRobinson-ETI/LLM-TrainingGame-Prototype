@@ -194,7 +194,7 @@ const DenoiseChallenge = ({ challenge, onComplete }) => {
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, []);
+  }, [phase]);
 
   const handleLock = () => {
     const success = signalQuality > 0.8;
