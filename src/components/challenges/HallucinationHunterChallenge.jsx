@@ -465,34 +465,35 @@ const HallucinationHunterChallenge = ({ challenge, onComplete }) => {
       <div style={{ padding: '20px', textAlign: 'center' }}>
         <div style={{
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          color: '#1d1d1f',
+          color: '#ffffff',
           padding: '20px',
           borderRadius: '12px',
           marginBottom: '20px'
         }}>
           <h2 style={{ margin: '0 0 8px 0', fontSize: '2rem' }}>🎯 Hunt Complete!</h2>
-          <p style={{ margin: 0, fontSize: '1rem' }}>Hallucination Report</p>
+          <p style={{ margin: 0, fontSize: '1rem', opacity: 0.9 }}>Hallucination Report</p>
         </div>
 
         <div style={{
-          background: '#f7f7f7',
+          background: '#1a1a2e',
           padding: '24px',
           borderRadius: '12px',
           marginBottom: '20px',
           fontSize: '1.1rem',
-          lineHeight: '2'
+          lineHeight: '2',
+          color: '#e0e0e0'
         }}>
           <div><strong>Hallucinations Caught:</strong> <span style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#10b981' }}>{hallucinationsCaught}</span></div>
           <div><strong>Hallucinations Missed:</strong> <span style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#ef4444' }}>{hallucinationsMissed}</span></div>
           <div><strong>False Positives:</strong> <span style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#f59e0b' }}>{falsePositives}</span></div>
-          <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '2px solid #ddd' }}>
+          <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '2px solid rgba(255,255,255,0.15)' }}>
             <strong>Accuracy:</strong> <span style={{ color: accuracy >= 60 ? '#10b981' : '#ef4444', fontSize: '1.5rem', fontWeight: 'bold' }}>{accuracy}%</span>
           </div>
         </div>
 
         <div style={{
           background: passed ? '#10b981' : '#ef4444',
-          color: '#1d1d1f',
+          color: '#ffffff',
           padding: '16px',
           borderRadius: '12px',
           fontSize: '1.3rem',
@@ -508,7 +509,7 @@ const HallucinationHunterChallenge = ({ challenge, onComplete }) => {
           }}
           style={{
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            color: '#1d1d1f',
+            color: '#ffffff',
             border: 'none',
             padding: '14px 28px',
             fontSize: '1.1rem',

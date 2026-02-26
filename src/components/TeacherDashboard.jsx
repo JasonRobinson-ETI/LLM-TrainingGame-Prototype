@@ -639,7 +639,7 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
       }}>
         {/* AI Mind - spans 2 columns and 2 rows on the left */}
         <div style={{ gridColumn: '1 / 3', gridRow: '1 / 3', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <LLMDisplay gameState={gameState} />
+          <LLMDisplay gameState={gameState} sendMessage={sendMessage} />
         </div>
 
         {/* Recent Activity - spans 2 rows on the right */}

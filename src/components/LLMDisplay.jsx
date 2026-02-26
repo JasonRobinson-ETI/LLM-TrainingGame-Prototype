@@ -1,6 +1,33 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
-const LLMDisplay = ({ gameState }) => {
+const LLMDisplay = ({ gameState, sendMessage }) => {
+  const [confirmIndex, setConfirmIndex] = useState(null);
+  const scrollRef = useRef(null);
+  const isHovered = useRef(false);
+  const scrollDir = useRef(1); // 1 = down, -1 = up
+
+  useEffect(() => {
+    if (!sendMessage) return; // only teacher view
+    const speed = 0.2; // pixels per frame
+    let rafId;
+    let accumulated = 0;
+    const step = () => {
+      const el = scrollRef.current;
+      if (el && !isHovered.current) {
+        accumulated += speed;
+        const pixels = Math.floor(accumulated);
+        if (pixels >= 1) {
+          el.scrollTop += pixels * scrollDir.current;
+          accumulated -= pixels;
+        }
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 2) scrollDir.current = -1;
+        if (el.scrollTop <= 0) scrollDir.current = 1;
+      }
+      rafId = requestAnimationFrame(step);
+    };
+    rafId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafId);
+  }, [sendMessage]);
   // Use the training data length to create a unique key that changes when content updates
   // This ensures the animation restarts whenever new Q&A pairs are added
   const animationKey = `${gameState?.trainingData?.length || 0}-${gameState?.llmKnowledge?.length || 0}`;
@@ -110,6 +137,92 @@ const LLMDisplay = ({ gameState }) => {
           Session Activity
         </div>
         {gameState?.llmKnowledge && gameState.llmKnowledge.length > 0 ? (
+          sendMessage ? (
+          /* Teacher view: plain scrollable list with gentle auto-scroll */
+          <div
+            ref={scrollRef}
+            onMouseEnter={() => { isHovered.current = true; }}
+            onMouseLeave={() => { isHovered.current = false; }}
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              maskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)',
+              WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)'
+            }}>
+            {gameState.llmKnowledge.map((item, idx) => (
+              <div
+                key={idx}
+                style={{
+                  padding: '12px',
+                  background: confirmIndex === idx ? 'rgba(255, 59, 48, 0.08)' : 'rgba(255, 255, 255, 0.7)',
+                  backdropFilter: 'blur(20px)',
+                  WebkitBackdropFilter: 'blur(20px)',
+                  borderRadius: '8px',
+                  border: confirmIndex === idx ? '1px solid rgba(255, 59, 48, 0.3)' : '1px solid rgba(255, 255, 255, 0.7)',
+                  boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.7)',
+                  position: 'relative',
+                  flexShrink: 0
+                }}
+              >
+                <div style={{ fontSize: '13px', color: '#1d1d1f', marginBottom: '4px', fontWeight: '500', paddingRight: '28px' }}>
+                  <strong>Q:</strong> {item.q}
+                </div>
+                <div style={{ fontSize: '13px', color: '#86868b' }}>
+                  <strong>A:</strong> {item.a}
+                </div>
+                {confirmIndex === idx ? (
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                    <button
+                      onClick={() => {
+                        sendMessage({ type: 'remove_knowledge_item', index: idx });
+                        setConfirmIndex(null);
+                      }}
+                      style={{
+                        flex: 1, padding: '4px 8px',
+                        background: 'rgba(255, 59, 48, 0.85)', color: '#fff',
+                        border: 'none', borderRadius: '6px',
+                        fontSize: '12px', fontWeight: '600', cursor: 'pointer'
+                      }}
+                    >
+                      Delete
+                    </button>
+                    <button
+                      onClick={() => setConfirmIndex(null)}
+                      style={{
+                        flex: 1, padding: '4px 8px',
+                        background: 'rgba(0,0,0,0.06)', color: '#1d1d1f',
+                        border: 'none', borderRadius: '6px',
+                        fontSize: '12px', cursor: 'pointer'
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmIndex(idx)}
+                    title="Remove this entry"
+                    style={{
+                      position: 'absolute', top: '8px', right: '8px',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      fontSize: '14px', color: '#86868b',
+                      lineHeight: 1, padding: '2px 4px', borderRadius: '4px'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#ff3b30'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#86868b'}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          ) : (
+          /* Student view: auto-scrolling animation */
           <div style={{
             flex: 1,
             overflowY: 'hidden',
@@ -173,6 +286,7 @@ const LLMDisplay = ({ gameState }) => {
               ))}
             </div>
           </div>
+          ) /* end student animation branch */
         ) : (
           <div style={{
             minHeight: '150px',

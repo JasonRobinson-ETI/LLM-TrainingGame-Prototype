@@ -402,38 +402,47 @@ const BiasBreakerChallenge = ({ challenge, onComplete }) => {
     const passed = correctCount > totalCount / 2; // Simple majority
 
     return (
-      <div style={{ padding: '20px', textAlign: 'center' }}>
+      <div style={{ padding: '20px', textAlign: 'center', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', borderRadius: '12px', minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          color: '#1d1d1f',
+          color: 'white',
           padding: '20px',
           borderRadius: '12px',
-          marginBottom: '20px'
+          marginBottom: '20px',
+          width: '100%',
+          maxWidth: '500px'
         }}>
           <h2 style={{ margin: '0 0 8px 0', fontSize: '2rem' }}>🔒 Challenge Complete!</h2>
           <p style={{ margin: 0, fontSize: '1rem' }}>Final Results</p>
         </div>
 
         <div style={{
-          background: '#f7f7f7',
+          background: 'rgba(255, 255, 255, 0.05)',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
           padding: '24px',
           borderRadius: '12px',
           marginBottom: '20px',
           fontSize: '1.1rem',
-          lineHeight: '2'
+          lineHeight: '2',
+          width: '100%',
+          maxWidth: '500px',
+          color: 'white'
         }}>
-          <div><strong>Correct Answers:</strong> <span style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#764ba2' }}>{correctCount}/{totalCount}</span></div>
+          <div><strong>Correct Answers:</strong> <span style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#a78bfa' }}>{correctCount}/{totalCount}</span></div>
           <div><strong>Accuracy:</strong> <span style={{ color: accuracy >= 50 ? '#10b981' : '#ef4444', fontSize: '1.3rem', fontWeight: 'bold' }}>{accuracy}%</span></div>
         </div>
 
         <div style={{
           background: passed ? '#10b981' : '#ef4444',
-          color: '#1d1d1f',
+          color: 'white',
           padding: '16px',
           borderRadius: '12px',
           fontSize: '1.3rem',
           fontWeight: 'bold',
-          marginBottom: '20px'
+          marginBottom: '20px',
+          width: '100%',
+          maxWidth: '500px'
         }}>
           {passed ? '✅ PASSED - Majority Correct!' : '❌ FAILED - Need More Correct Answers'}
         </div>
@@ -444,7 +453,7 @@ const BiasBreakerChallenge = ({ challenge, onComplete }) => {
           }}
           style={{
             background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            color: '#1d1d1f',
+            color: 'white',
             border: 'none',
             padding: '14px 28px',
             fontSize: '1.1rem',

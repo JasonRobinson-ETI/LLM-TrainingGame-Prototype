@@ -309,6 +309,10 @@ function handleMessage(clientId, data, ws) {
     case 'kick_student':
       handleKickStudent(clientId, data.clientId);
       break;
+
+    case 'remove_knowledge_item':
+      handleRemoveKnowledgeItem(clientId, data.index);
+      break;
   }
 }
 
@@ -1267,6 +1271,32 @@ function handleStarQAPair(clientId, data) {
   broadcast({ type: 'game_state', gameState });
   
   console.log('[STARRED] Broadcast complete. Total pairs:', gameState.starredQAPairs.length);
+}
+
+function handleRemoveKnowledgeItem(teacherClientId, index) {
+  // Verify the requester is a teacher
+  const teacher = gameState.clients[teacherClientId];
+  if (!teacher || teacher.role !== 'teacher') {
+    console.log(`[REMOVE_KNOWLEDGE] Rejected request from ${teacherClientId} - not a teacher`);
+    return;
+  }
+
+  if (typeof index !== 'number' || index < 0 || index >= gameState.trainingData.length) {
+    console.log(`[REMOVE_KNOWLEDGE] Invalid index ${index}, trainingData length: ${gameState.trainingData.length}`);
+    return;
+  }
+
+  const removed = gameState.trainingData[index];
+  console.log(`[REMOVE_KNOWLEDGE] Teacher removing item at index ${index}: Q="${removed.question}"`);
+
+  gameState.trainingData.splice(index, 1);
+  gameState.llmKnowledge = gameState.trainingData.map(d => ({
+    q: d.question,
+    a: d.answer
+  }));
+  cleanTrainingDataCache = null;
+
+  broadcast({ type: 'game_state', gameState });
 }
 
 function handleKickStudent(teacherClientId, studentClientId) {

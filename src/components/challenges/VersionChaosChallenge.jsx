@@ -6,7 +6,6 @@ const VersionChaosChallenge = ({ challenge, onComplete }) => {
   const [currentRound, setCurrentRound] = useState(0);
   const [score, setScore] = useState(0);
   const [feedback, setFeedback] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(10);
   const roundTimeoutRef = useRef(null);
 
   const totalRounds = 5;
@@ -187,37 +186,12 @@ const VersionChaosChallenge = ({ challenge, onComplete }) => {
 
   const currentScenario = scenarios[currentRound];
 
-  // Timer countdown
-  useEffect(() => {
-    if (phase !== 'active' || feedback) return;
-
-    const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          // Time's up - auto-fail with explicit -1 to indicate timeout
-          handleVersionSelect(-1);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [phase, feedback, currentRound]);
-
   // Cleanup round timeout on unmount
   useEffect(() => {
     return () => {
       if (roundTimeoutRef.current) clearTimeout(roundTimeoutRef.current);
     };
   }, []);
-
-  // Reset timer for each round
-  useEffect(() => {
-    if (phase === 'active' && !feedback) {
-      setTimeLeft(10);
-    }
-  }, [currentRound, phase, feedback]);
 
   const handleVersionSelect = (index) => {
     if (feedback || phase !== 'active') return;
@@ -246,10 +220,6 @@ const VersionChaosChallenge = ({ challenge, onComplete }) => {
   const getVersionStatusIcon = (status) => {
     // Return neutral icon for all versions to avoid giving away answers
     return '📊';
-  };  const getTimerColor = () => {
-    if (timeLeft > 6) return '#10b981';
-    if (timeLeft > 3) return '#f59e0b';
-    return '#ef4444';
   };
 
   if (phase === 'intro') {
@@ -426,23 +396,6 @@ const VersionChaosChallenge = ({ challenge, onComplete }) => {
           }}>
             <span>Round: <strong style={{ color: 'white' }}>{currentRound + 1}/5</strong></span>
             <span>Score: <strong style={{ color: 'white' }}>{score}</strong></span>
-          </div>
-        </div>
-        
-        <div style={{
-          background: timeLeft <= 3 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(139, 92, 246, 0.2)',
-          padding: 'clamp(6px, 1.5vw, 10px) clamp(12px, 2.5vw, 20px)',
-          borderRadius: 'clamp(6px, 1.5vw, 10px)',
-          border: `2px solid ${getTimerColor()}`,
-          animation: timeLeft <= 3 ? 'pulse 1s infinite' : 'none'
-        }}>
-          <div style={{
-            fontSize: 'clamp(1.2rem, 4vw, 1.8rem)',
-            fontWeight: 'bold',
-            color: getTimerColor(),
-            fontFamily: 'monospace'
-          }}>
-            ⏱️ {timeLeft}s
           </div>
         </div>
       </div>

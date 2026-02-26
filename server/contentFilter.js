@@ -93,7 +93,7 @@ function censorText(input, options = {}) {
     'hello', 'shell', 'bells', 'assess', 'assignment', 'assumption', 'bass', 'mass', 
     'pass', 'assistant', 'brass', 'class', 'hassle', 'lasso', 'massage', 'passable', 
     'sassy', 'tassel', 'casserole', 'embarrass', 'harass', 'jazz', 'razz', 'sass', 'vassal',
-    'skilled',
+    'skilled', 'gas station',
   ]).map(e => e.toLowerCase());
 
   const leetMap = options.leetMap || DEFAULT_LEET_MAP;
