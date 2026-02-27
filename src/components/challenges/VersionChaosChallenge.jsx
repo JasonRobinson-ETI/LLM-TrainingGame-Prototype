@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ChallengeIntro from './ChallengeIntro';
 
-const VersionChaosChallenge = ({ challenge, onComplete }) => {
+const VersionChaosChallenge = ({ challenge, onComplete, onTimerStart }) => {
   const [phase, setPhase] = useState('intro');
   const [selectedVersion, setSelectedVersion] = useState(null);
   const [currentRound, setCurrentRound] = useState(0);
@@ -224,133 +225,43 @@ const VersionChaosChallenge = ({ challenge, onComplete }) => {
 
   if (phase === 'intro') {
     return (
-      <div style={{
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 'clamp(12px, 3vw, 20px)'
-      }}>
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.05)',
-          backdropFilter: 'blur(20px)',
-          borderRadius: 'clamp(12px, 3vw, 20px)',
-          padding: 'clamp(20px, 4vw, 40px)',
-          maxWidth: '600px',
-          width: '100%',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
-          border: '1px solid rgba(255, 255, 255, 0.1)'
-        }}>
-          <div style={{ textAlign: 'center', marginBottom: 'clamp(20px, 4vw, 30px)' }}>
-            <div style={{ fontSize: 'clamp(2.5rem, 10vw, 4rem)', marginBottom: 'clamp(12px, 3vw, 20px)' }}>
-              🔄
-            </div>
-            <h2 style={{ 
-              fontSize: 'clamp(1.5rem, 5vw, 2.5rem)', 
-              margin: '0 0 clamp(10px, 2vw, 15px) 0',
-              color: 'white',
-              fontWeight: 'bold'
-            }}>
-              Version Chaos
-            </h2>
-            <p style={{ 
-              fontSize: 'clamp(0.9rem, 3vw, 1.2rem)', 
-              color: '#94a3b8',
-              lineHeight: '1.5',
-              margin: '0'
-            }}>
-              Model Version Control & Rollback
-            </p>
-          </div>
-
-          <div style={{
-            background: 'rgba(139, 92, 246, 0.1)',
-            borderRadius: 'clamp(10px, 2.5vw, 15px)',
-            padding: 'clamp(15px, 3vw, 20px)',
-            marginBottom: 'clamp(15px, 3vw, 25px)',
-            border: '2px solid rgba(139, 92, 246, 0.3)'
-          }}>
-            <h3 style={{ 
-              fontSize: 'clamp(1rem, 3vw, 1.2rem)', 
-              margin: '0 0 clamp(10px, 2vw, 15px) 0',
-              color: '#a78bfa'
-            }}>
-              🎯 Your Mission:
-            </h3>
-            <ul style={{ 
-              margin: '0',
-              paddingLeft: 'clamp(18px, 3vw, 20px)',
-              fontSize: 'clamp(0.85rem, 2.5vw, 1rem)',
-              color: '#cbd5e1',
-              lineHeight: '1.6'
-            }}>
-              <li style={{ marginBottom: '6px' }}>Review 4 model versions per scenario</li>
-              <li style={{ marginBottom: '6px' }}>Analyze accuracy, latency, and issues</li>
-              <li style={{ marginBottom: '6px' }}>Deploy the <strong style={{ color: 'white' }}>stable version</strong></li>
-              <li style={{ marginBottom: '6px' }}>You have <strong style={{ color: 'white' }}>10 seconds</strong> per decision</li>
-              <li>Complete 5 deployment scenarios</li>
-            </ul>
-          </div>
-
-          <div style={{
-            background: 'rgba(251, 191, 36, 0.1)',
-            borderRadius: 'clamp(10px, 2.5vw, 12px)',
-            padding: 'clamp(12px, 2.5vw, 16px)',
-            marginBottom: 'clamp(15px, 3vw, 20px)',
-            border: '2px solid rgba(251, 191, 36, 0.3)'
-          }}>
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'flex-start',
-              gap: 'clamp(8px, 2vw, 10px)'
-            }}>
-              <span style={{ fontSize: 'clamp(1.2rem, 4vw, 1.5rem)', flexShrink: 0 }}>💡</span>
-              <div>
-                <strong style={{ color: '#fbbf24', fontSize: 'clamp(0.9rem, 2.5vw, 1rem)' }}>
-                  Pro Tip:
-                </strong>
-                <p style={{ 
-                  margin: '4px 0 0 0',
-                  color: '#cbd5e1',
-                  fontSize: 'clamp(0.85rem, 2.5vw, 0.95rem)',
-                  lineHeight: '1.5'
-                }}>
-                  Stable versions have high accuracy, low latency, and no issues!
-                </p>
+      <ChallengeIntro
+        onStart={() => setPhase('active')}
+        onTimerStart={onTimerStart}
+        steps={[
+          {
+            emoji: '🔄',
+            title: 'Multiple broken versions just deployed!',
+            description: 'Your job: review each model version and identify the stable one before things go wrong!',
+          },
+          {
+            emoji: '📊',
+            title: 'Look for high accuracy and no issues',
+            description: 'Each version card shows accuracy, latency, and any bugs. Find the best one!',
+            demo: (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', maxWidth: '252px', margin: '0 auto' }}>
+                {[
+                  { v: 'v2.1', acc: '94%', ok: true, label: 'STABLE ✓' },
+                  { v: 'v2.2', acc: '67%', ok: false, label: 'BUGGY' },
+                  { v: 'v2.0', acc: '88%', ok: false, label: 'OLD' },
+                  { v: 'v2.3', acc: '12%', ok: false, label: 'BROKEN' },
+                ].map((ver) => (
+                  <div key={ver.v} style={{ background: ver.ok ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.06)', border: `1px solid ${ver.ok ? '#10b981' : 'rgba(255,255,255,0.12)'}`, borderRadius: '8px', padding: '8px', textAlign: 'center', color: 'white', fontSize: '0.8rem' }}>
+                    <div style={{ fontWeight: 'bold' }}>{ver.v}</div>
+                    <div style={{ color: '#94a3b8' }}>Acc: {ver.acc}</div>
+                    <div style={{ color: ver.ok ? '#10b981' : '#ef4444', fontWeight: 'bold', fontSize: '0.72rem' }}>{ver.label}</div>
+                  </div>
+                ))}
               </div>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setPhase('active')}
-            style={{
-              width: '100%',
-              padding: 'clamp(14px, 3vw, 18px)',
-              fontSize: 'clamp(1rem, 3.5vw, 1.2rem)',
-              fontWeight: 'bold',
-              color: 'white',
-              background: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
-              border: 'none',
-              borderRadius: 'clamp(10px, 2.5vw, 12px)',
-              cursor: 'pointer',
-              transition: 'transform 0.2s, box-shadow 0.2s',
-              boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)',
-              minHeight: '48px'
-            }}
-            onMouseEnter={e => {
-              e.target.style.transform = 'translateY(-2px)';
-              e.target.style.boxShadow = '0 6px 20px rgba(139, 92, 246, 0.6)';
-            }}
-            onMouseLeave={e => {
-              e.target.style.transform = 'translateY(0)';
-              e.target.style.boxShadow = '0 4px 15px rgba(139, 92, 246, 0.4)';
-            }}
-          >
-            Start Deployment 🚀
-          </button>
-        </div>
-      </div>
+            ),
+          },
+          {
+            emoji: '🚀',
+            title: 'Deploy the STABLE version each round!',
+            description: 'Complete 5 deployment decisions in 10 seconds each. Only stable versions keep things running!',
+          },
+        ]}
+      />
     );
   }
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ChallengeIntro from './ChallengeIntro';
 
-const DenoiseChallenge = ({ challenge, onComplete }) => {
+const DenoiseChallenge = ({ challenge, onComplete, onTimerStart }) => {
   const [phase, setPhase] = useState('intro'); // 'intro', 'active', 'complete'
   const [frequency, setFrequency] = useState(0.5);
   const [amplitude, setAmplitude] = useState(0.5);
@@ -224,86 +225,40 @@ const DenoiseChallenge = ({ challenge, onComplete }) => {
 
   if (phase === 'intro') {
     return (
-      <div style={{ 
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-        padding: 'clamp(12px, 3vw, 30px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}>
-        <div style={{
-          maxWidth: '800px',
-          width: '100%',
-          background: 'rgba(255, 255, 255, 0.05)',
-          backdropFilter: 'blur(20px)',
-          borderRadius: 'clamp(12px, 3vw, 20px)',
-          padding: 'clamp(20px, 4vw, 40px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)'
-        }}>
-          <div style={{ textAlign: 'center', marginBottom: 'clamp(20px, 4vw, 30px)' }}>
-            <div style={{ fontSize: 'clamp(2.5rem, 10vw, 4rem)', marginBottom: 'clamp(12px, 3vw, 20px)' }}>
-              🤖
-            </div>
-            <h2 style={{ 
-              fontSize: 'clamp(1.5rem, 5vw, 2.5rem)', 
-              margin: '0 0 clamp(10px, 2vw, 15px) 0',
-              color: 'white',
-              fontWeight: 'bold'
-            }}>
-              Denoising BERT
-            </h2>
-            <p style={{ 
-              fontSize: 'clamp(0.9rem, 3vw, 1.2rem)', 
-              color: '#94a3b8',
-              lineHeight: '1.5',
-              margin: '0'
-            }}>
-              Filter the noise to train your model!
-            </p>
-          </div>
-
-          <div style={{
-            background: 'rgba(139, 92, 246, 0.1)',
-            borderRadius: 'clamp(10px, 2.5vw, 15px)',
-            padding: 'clamp(15px, 3vw, 25px)',
-            marginBottom: 'clamp(15px, 3vw, 25px)',
-            border: '1px solid rgba(139, 92, 246, 0.3)',
-            textAlign: 'left',
-            color: 'white',
-            fontSize: 'clamp(0.85rem, 2.5vw, 1rem)',
-            lineHeight: '1.6'
-          }}>
-            <p style={{ marginTop: 0 }}><strong style={{ color: '#a78bfa' }}>🎯 Your Mission:</strong> Tune frequency and amplitude to clean the signal</p>
-            <p><strong style={{ color: '#a78bfa' }}>📊 Signal Quality:</strong> Must reach 80%+ to lock in</p>
-            <p><strong style={{ color: '#a78bfa' }}>🎚️ Controls:</strong> Adjust both sliders to find the sweet spot</p>
-            <p><strong style={{ color: '#a78bfa' }}>⚡ Watch:</strong> Green zone = good, red particles = noise</p>
-            <p style={{ marginBottom: 0 }}><strong style={{ color: '#a78bfa' }}>✅ Win Condition:</strong> Lock signal for 2 seconds</p>
-          </div>
-
-          <button
-            onClick={() => setPhase('active')}
-            style={{
-              width: '100%',
-              padding: 'clamp(14px, 3vw, 18px)',
-              fontSize: 'clamp(1rem, 3.5vw, 1.2rem)',
-              fontWeight: 'bold',
-              color: 'white',
-              background: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
-              border: 'none',
-              borderRadius: 'clamp(10px, 2.5vw, 12px)',
-              cursor: 'pointer',
-              transition: 'transform 0.2s',
-              minHeight: '48px',
-              boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)'
-            }}
-            onMouseEnter={e => e.target.style.transform = 'scale(1.02)'}
-            onMouseLeave={e => e.target.style.transform = 'scale(1)'}
-          >
-            🚀 Start Tuning
-          </button>
-        </div>
-      </div>
+      <ChallengeIntro
+        onStart={() => setPhase('active')}
+        onTimerStart={onTimerStart}
+        steps={[
+          {
+            emoji: '📡',
+            title: 'Your AI signal is corrupted!',
+            description: 'Noise is breaking the training data. You need to clean it up before the AI can learn properly.',
+          },
+          {
+            emoji: '🎚️',
+            title: 'Drag BOTH sliders to tune',
+            description: 'Move the Frequency and Amplitude sliders to find the sweet spot that clears the noise.',
+            demo: (
+              <div style={{ maxWidth: '260px', margin: '0 auto' }}>
+                {[['Frequency', '60%'], ['Amplitude', '35%']].map(([label, pos]) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+                    <span style={{ color: '#94a3b8', fontSize: '0.8rem', width: '82px', textAlign: 'left' }}>{label}</span>
+                    <div style={{ flex: 1, height: '8px', background: 'rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: pos, top: '50%', transform: 'translate(-50%,-50%)', width: '22px', height: '22px', background: 'white', borderRadius: '50%', boxShadow: '0 2px 10px rgba(0,0,0,0.5)' }} />
+                    </div>
+                  </div>
+                ))}
+                <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.8rem' }}>Keep adjusting until the quality bar turns green</div>
+              </div>
+            ),
+          },
+          {
+            emoji: '📊',
+            title: 'Fill the bar to 80% to win!',
+            description: 'Hold the signal quality at 80%+ for 2 seconds and you\'re done. Watch for the green zone!',
+          },
+        ]}
+      />
     );
   }
 

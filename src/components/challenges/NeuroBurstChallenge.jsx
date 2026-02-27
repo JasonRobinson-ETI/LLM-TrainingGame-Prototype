@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ChallengeIntro from './ChallengeIntro';
 
-const NeuroBurstChallenge = ({ challenge, onComplete }) => {
+const NeuroBurstChallenge = ({ challenge, onComplete, onTimerStart }) => {
   const [phase, setPhase] = useState('intro'); // 'intro', 'active', 'complete'
   const [currentRound, setCurrentRound] = useState(0);
   const [score, setScore] = useState(0);
@@ -379,86 +380,37 @@ const NeuroBurstChallenge = ({ challenge, onComplete }) => {
 
   if (phase === 'intro') {
     return (
-      <div style={{ 
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-        padding: 'clamp(12px, 3vw, 30px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}>
-        <div style={{
-          maxWidth: '800px',
-          width: '100%',
-          background: 'rgba(255, 255, 255, 0.05)',
-          backdropFilter: 'blur(20px)',
-          borderRadius: 'clamp(12px, 3vw, 20px)',
-          padding: 'clamp(20px, 4vw, 40px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)'
-        }}>
-          <div style={{ textAlign: 'center', marginBottom: 'clamp(20px, 4vw, 30px)' }}>
-            <div style={{ fontSize: 'clamp(2.5rem, 10vw, 4rem)', marginBottom: 'clamp(12px, 3vw, 20px)' }}>
-              ⚡
-            </div>
-            <h2 style={{ 
-              fontSize: 'clamp(1.5rem, 5vw, 2.5rem)', 
-              margin: '0 0 clamp(10px, 2vw, 15px) 0',
-              color: 'white',
-              fontWeight: 'bold'
-            }}>
-              Neuro Burst
-            </h2>
-            <p style={{ 
-              fontSize: 'clamp(0.9rem, 3vw, 1.2rem)', 
-              color: '#94a3b8',
-              lineHeight: '1.5',
-              margin: '0'
-            }}>
-              Configure your neural network to predict correctly!
-            </p>
-          </div>
-
-          <div style={{
-            background: 'rgba(139, 92, 246, 0.1)',
-            borderRadius: 'clamp(10px, 2.5vw, 15px)',
-            padding: 'clamp(15px, 3vw, 25px)',
-            marginBottom: 'clamp(15px, 3vw, 25px)',
-            border: '1px solid rgba(139, 92, 246, 0.3)',
-            textAlign: 'left',
-            color: 'white',
-            fontSize: 'clamp(0.85rem, 2.5vw, 1rem)',
-            lineHeight: '1.6'
-          }}>
-            <p style={{ marginTop: 0 }}><strong style={{ color: '#a78bfa' }}>🎯 Your Mission:</strong> Toggle neurons to match the pattern</p>
-            <p><strong style={{ color: '#a78bfa' }}>🧠 Network:</strong> 2 hidden layers with 4 neurons each</p>
-            <p><strong style={{ color: '#a78bfa' }}>🔘 Toggle:</strong> Click neurons to turn them on/off</p>
-            <p><strong style={{ color: '#a78bfa' }}>📊 Prediction:</strong> Adjusts as you change the network</p>
-            <p style={{ marginBottom: 0 }}><strong style={{ color: '#a78bfa' }}>✅ Win Condition:</strong> Get majority of predictions correct</p>
-          </div>
-
-          <button
-            onClick={() => setPhase('active')}
-            style={{
-              width: '100%',
-              padding: 'clamp(14px, 3vw, 18px)',
-              fontSize: 'clamp(1rem, 3.5vw, 1.2rem)',
-              fontWeight: 'bold',
-              color: 'white',
-              background: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
-              border: 'none',
-              borderRadius: 'clamp(10px, 2.5vw, 12px)',
-              cursor: 'pointer',
-              transition: 'transform 0.2s',
-              minHeight: '48px',
-              boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)'
-            }}
-            onMouseEnter={e => e.target.style.transform = 'scale(1.02)'}
-            onMouseLeave={e => e.target.style.transform = 'scale(1)'}
-          >
-            🚀 Start Training
-          </button>
-        </div>
-      </div>
+      <ChallengeIntro
+        onStart={() => setPhase('active')}
+        onTimerStart={onTimerStart}
+        steps={[
+          {
+            emoji: '⚡',
+            title: 'Your neural network is broken!',
+            description: 'Neurons are firing randomly and predictions are wrong. You need to reconfigure them!',
+          },
+          {
+            emoji: '🔘',
+            title: 'Tap neurons to flip ON or OFF',
+            description: 'Each neuron you toggle changes the network output. Experiment until predictions look right.',
+            demo: (
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '220px', margin: '0 auto' }}>
+                {[true, false, true, false, false, true, false, true].map((on, i) => (
+                  <div key={i} style={{ width: '40px', height: '40px', borderRadius: '50%', background: on ? 'linear-gradient(135deg, #f59e0b, #ef4444)' : 'rgba(255,255,255,0.08)', border: `2px solid ${on ? '#f59e0b' : 'rgba(255,255,255,0.2)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: on ? 'white' : '#475569', fontWeight: 'bold' }}>
+                    {on ? 'ON' : 'OFF'}
+                  </div>
+                ))}
+                <div style={{ width: '100%', textAlign: 'center', color: '#94a3b8', fontSize: '0.8rem', marginTop: '4px' }}>Tap any neuron to toggle it</div>
+              </div>
+            ),
+          },
+          {
+            emoji: '✅',
+            title: 'Match the target pattern!',
+            description: 'Get the majority of predictions correct across all rounds and you win!',
+          },
+        ]}
+      />
     );
   }
 

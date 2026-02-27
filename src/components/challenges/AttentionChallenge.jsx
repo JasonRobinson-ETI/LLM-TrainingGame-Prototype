@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import ChallengeIntro from './ChallengeIntro';
 
-const AttentionChallenge = ({ challenge, onComplete }) => {
+const AttentionChallenge = ({ challenge, onComplete, onTimerStart }) => {
   const [phase, setPhase] = useState('intro'); // 'intro', 'active', 'complete'
   const [selectedWords, setSelectedWords] = useState(new Set());
   const [submitted, setSubmitted] = useState(false);
   const [currentRound, setCurrentRound] = useState(0);
   const [scores, setScores] = useState([]);
   
-  // Multiple sentence examples
-  const sentenceExamples = [
+  // Multiple sentence examples — shuffled on each mount for variety
+  const allSentenceExamples = [
     {
       sentence: "The cat that chased the mouse was tired",
       words: ["The", "cat", "that", "chased", "the", "mouse", "was", "tired"],
@@ -38,9 +39,139 @@ const AttentionChallenge = ({ challenge, onComplete }) => {
       words: ["The", "pizza", "was", "delicious", "so", "I", "ate", "it", "all"],
       targetWordIndex: 7,
       correctAttentions: [1]
+    },
+    {
+      sentence: "Jake fell off his bike and hurt himself",
+      words: ["Jake", "fell", "off", "his", "bike", "and", "hurt", "himself"],
+      targetWordIndex: 7,
+      correctAttentions: [0]
+    },
+    {
+      sentence: "The flowers bloomed because they got enough rain",
+      words: ["The", "flowers", "bloomed", "because", "they", "got", "enough", "rain"],
+      targetWordIndex: 4,
+      correctAttentions: [1]
+    },
+    {
+      sentence: "Emma told her sister that she would be there",
+      words: ["Emma", "told", "her", "sister", "that", "she", "would", "be", "there"],
+      targetWordIndex: 5,
+      correctAttentions: [0]
+    },
+    {
+      sentence: "The students worked hard so they passed the test",
+      words: ["The", "students", "worked", "hard", "so", "they", "passed", "the", "test"],
+      targetWordIndex: 5,
+      correctAttentions: [1]
+    },
+    {
+      sentence: "My dog loves running but it gets tired quickly",
+      words: ["My", "dog", "loves", "running", "but", "it", "gets", "tired", "quickly"],
+      targetWordIndex: 5,
+      correctAttentions: [1]
+    },
+    {
+      sentence: "The chef cooked a meal and burned it slightly",
+      words: ["The", "chef", "cooked", "a", "meal", "and", "burned", "it", "slightly"],
+      targetWordIndex: 7,
+      correctAttentions: [4]
+    },
+    {
+      sentence: "Alex finished the race and received her award",
+      words: ["Alex", "finished", "the", "race", "and", "received", "her", "award"],
+      targetWordIndex: 6,
+      correctAttentions: [0]
+    },
+    {
+      sentence: "Tom ran fast but he still missed the bus",
+      words: ["Tom", "ran", "fast", "but", "he", "still", "missed", "the", "bus"],
+      targetWordIndex: 4,
+      correctAttentions: [0]
+    },
+    {
+      sentence: "The kitten was hungry and it meowed all night",
+      words: ["The", "kitten", "was", "hungry", "and", "it", "meowed", "all", "night"],
+      targetWordIndex: 5,
+      correctAttentions: [1]
+    },
+    {
+      sentence: "The old man walked slowly because his knee hurt",
+      words: ["The", "old", "man", "walked", "slowly", "because", "his", "knee", "hurt"],
+      targetWordIndex: 6,
+      correctAttentions: [2]
+    },
+    {
+      sentence: "Maria cooked soup and her whole family loved it",
+      words: ["Maria", "cooked", "soup", "and", "her", "whole", "family", "loved", "it"],
+      targetWordIndex: 8,
+      correctAttentions: [2]
+    },
+    {
+      sentence: "The window shattered and nobody could fix it",
+      words: ["The", "window", "shattered", "and", "nobody", "could", "fix", "it"],
+      targetWordIndex: 7,
+      correctAttentions: [1]
+    },
+    {
+      sentence: "The bright sun made everything hard to see clearly",
+      words: ["The", "bright", "sun", "made", "everything", "hard", "to", "see", "clearly"],
+      targetWordIndex: 1,
+      correctAttentions: [2]
+    },
+    {
+      sentence: "The team won because it practiced every single day",
+      words: ["The", "team", "won", "because", "it", "practiced", "every", "single", "day"],
+      targetWordIndex: 4,
+      correctAttentions: [1]
+    },
+    {
+      sentence: "The rocket launched and everyone watched it disappear",
+      words: ["The", "rocket", "launched", "and", "everyone", "watched", "it", "disappear"],
+      targetWordIndex: 6,
+      correctAttentions: [1]
+    },
+    {
+      sentence: "The new student felt lost until she found her class",
+      words: ["The", "new", "student", "felt", "lost", "until", "she", "found", "her", "class"],
+      targetWordIndex: 6,
+      correctAttentions: [2]
+    },
+    {
+      sentence: "The scientist made a discovery and published her findings",
+      words: ["The", "scientist", "made", "a", "discovery", "and", "published", "her", "findings"],
+      targetWordIndex: 7,
+      correctAttentions: [1]
+    },
+    {
+      sentence: "The baby cried all night and its parents were exhausted",
+      words: ["The", "baby", "cried", "all", "night", "and", "its", "parents", "were", "exhausted"],
+      targetWordIndex: 6,
+      correctAttentions: [1]
+    },
+    {
+      sentence: "David dropped his phone and cracked its screen",
+      words: ["David", "dropped", "his", "phone", "and", "cracked", "its", "screen"],
+      targetWordIndex: 6,
+      correctAttentions: [3]
+    },
+    {
+      sentence: "The bridge was old but it still held the weight",
+      words: ["The", "bridge", "was", "old", "but", "it", "still", "held", "the", "weight"],
+      targetWordIndex: 5,
+      correctAttentions: [1]
     }
   ];
-  
+
+  // Shuffle once per mount so each game session shows different rounds
+  const [sentenceExamples] = useState(() => {
+    const arr = [...allSentenceExamples];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  });
+
   const currentChallenge = sentenceExamples[currentRound] || challenge;
 
   // Inject responsive CSS
@@ -212,86 +343,39 @@ const AttentionChallenge = ({ challenge, onComplete }) => {
 
   if (phase === 'intro') {
     return (
-      <div style={{ 
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-        padding: 'clamp(12px, 3vw, 30px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}>
-        <div style={{
-          maxWidth: '800px',
-          width: '100%',
-          background: 'rgba(255, 255, 255, 0.05)',
-          backdropFilter: 'blur(20px)',
-          borderRadius: 'clamp(12px, 3vw, 20px)',
-          padding: 'clamp(20px, 4vw, 40px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)'
-        }}>
-          <div style={{ textAlign: 'center', marginBottom: 'clamp(20px, 4vw, 30px)' }}>
-            <div style={{ fontSize: 'clamp(2.5rem, 10vw, 4rem)', marginBottom: 'clamp(12px, 3vw, 20px)' }}>
-              🎯
-            </div>
-            <h2 style={{ 
-              fontSize: 'clamp(1.5rem, 5vw, 2.5rem)', 
-              margin: '0 0 clamp(10px, 2vw, 15px) 0',
-              color: 'white',
-              fontWeight: 'bold'
-            }}>
-              Attention Mechanism
-            </h2>
-            <p style={{ 
-              fontSize: 'clamp(0.9rem, 3vw, 1.2rem)', 
-              color: '#94a3b8',
-              lineHeight: '1.5',
-              margin: '0'
-            }}>
-              Train the model to focus on what matters!
-            </p>
-          </div>
-
-          <div style={{
-            background: 'rgba(139, 92, 246, 0.1)',
-            borderRadius: 'clamp(10px, 2.5vw, 15px)',
-            padding: 'clamp(15px, 3vw, 25px)',
-            marginBottom: 'clamp(15px, 3vw, 25px)',
-            border: '1px solid rgba(139, 92, 246, 0.3)',
-            textAlign: 'left',
-            color: 'white',
-            fontSize: 'clamp(0.85rem, 2.5vw, 1rem)',
-            lineHeight: '1.6'
-          }}>
-            <p style={{ marginTop: 0 }}><strong style={{ color: '#a78bfa' }}>🎯 Your Mission:</strong> Select words the model should focus on</p>
-            <p><strong style={{ color: '#a78bfa' }}>🔍 Target:</strong> The pink highlighted word is the context</p>
-            <p><strong style={{ color: '#a78bfa' }}>✅ Select:</strong> Click words that relate to the target</p>
-            <p><strong style={{ color: '#a78bfa' }}>✅ Win Condition:</strong> Get majority of selections correct</p>
-            <p style={{ marginBottom: 0 }}><strong style={{ color: '#a78bfa' }}>💡 Tip:</strong> Think about semantic relationships</p>
-          </div>
-
-          <button
-            onClick={() => setPhase('active')}
-            style={{
-              width: '100%',
-              padding: 'clamp(14px, 3vw, 18px)',
-              fontSize: 'clamp(1rem, 3.5vw, 1.2rem)',
-              fontWeight: 'bold',
-              color: 'white',
-              background: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
-              border: 'none',
-              borderRadius: 'clamp(10px, 2.5vw, 12px)',
-              cursor: 'pointer',
-              transition: 'transform 0.2s',
-              minHeight: '48px',
-              boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)'
-            }}
-            onMouseEnter={e => e.target.style.transform = 'scale(1.02)'}
-            onMouseLeave={e => e.target.style.transform = 'scale(1)'}
-          >
-            🚀 Start Focusing
-          </button>
-        </div>
-      </div>
+      <ChallengeIntro
+        onStart={() => setPhase('active')}
+        onTimerStart={onTimerStart}
+        steps={[
+          {
+            emoji: '🎯',
+            title: 'Teach the AI to focus!',
+            description: 'AI needs attention — it must learn which words in a sentence are connected to each other.',
+          },
+          {
+            emoji: '🟣',
+            title: 'Find what the PINK word refers to',
+            description: 'A word will be highlighted in pink. Figure out which other word in the sentence it refers to.',
+            demo: (
+              <div style={{ textAlign: 'center', lineHeight: 2 }}>
+                <div style={{ fontSize: 'clamp(0.9rem, 3vw, 1.05rem)', marginBottom: '10px' }}>
+                  <span style={{ color: '#cbd5e1' }}>Sarah bought a book and </span>
+                  <span style={{ background: 'rgba(236,72,153,0.35)', border: '2px solid #ec4899', borderRadius: '6px', padding: '2px 8px', color: 'white', fontWeight: 'bold' }}>she</span>
+                  <span style={{ color: '#cbd5e1' }}> loved it</span>
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+                  👆 &ldquo;she&rdquo; refers to <strong style={{ color: '#10b981' }}>Sarah</strong> — tap it!
+                </div>
+              </div>
+            ),
+          },
+          {
+            emoji: '👆',
+            title: 'Tap the right word, then submit!',
+            description: 'Click the word it refers to and hit Submit. Get the majority of rounds correct to win!',
+          },
+        ]}
+      />
     );
   }
 

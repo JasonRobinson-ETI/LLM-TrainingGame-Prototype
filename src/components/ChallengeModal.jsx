@@ -27,6 +27,7 @@ const CHALLENGE_THEMES = {
 const ChallengeModal = ({ challenge, onComplete }) => {
   const [timeLeft, setTimeLeft] = useState(challenge.timeLimit / 1000);
   const [completed, setCompleted] = useState(false);
+  const [timerStarted, setTimerStarted] = useState(false);
   const onCompleteRef = React.useRef(onComplete);
   
   const theme = CHALLENGE_THEMES[challenge.type] || CHALLENGE_THEMES.default;
@@ -37,7 +38,7 @@ const ChallengeModal = ({ challenge, onComplete }) => {
   }, [onComplete]);
 
   useEffect(() => {
-    if (completed) return; // Don't run timer if already completed
+    if (completed || !timerStarted) return; // Don't run timer until intro is complete
     
     const timer = setInterval(() => {
       setTimeLeft(prev => {
@@ -54,7 +55,7 @@ const ChallengeModal = ({ challenge, onComplete }) => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [challenge, completed]);
+  }, [challenge, completed, timerStarted]);
 
   const handleChallengeComplete = (success) => {
     if (!completed) {
@@ -63,35 +64,37 @@ const ChallengeModal = ({ challenge, onComplete }) => {
     }
   };
 
+  const handleTimerStart = () => setTimerStarted(true);
+
   const renderChallenge = () => {
     if (challenge.type === 'attention') {
-      return <AttentionChallenge challenge={challenge} onComplete={handleChallengeComplete} />;
+      return <AttentionChallenge challenge={challenge} onComplete={handleChallengeComplete} onTimerStart={handleTimerStart} />;
     }
     if (challenge.type === 'neuroburst') {
-      return <NeuroBurstChallenge challenge={challenge} onComplete={handleChallengeComplete} />;
+      return <NeuroBurstChallenge challenge={challenge} onComplete={handleChallengeComplete} onTimerStart={handleTimerStart} />;
     }
     if (challenge.type === 'clusterrush') {
-      return <ClusterRushChallenge challenge={challenge} onComplete={handleChallengeComplete} />;
+      return <ClusterRushChallenge challenge={challenge} onComplete={handleChallengeComplete} onTimerStart={handleTimerStart} />;
     }
     if (challenge.type === 'contextcache') {
-      return <ContextCacheChallenge challenge={challenge} onComplete={handleChallengeComplete} />;
+      return <ContextCacheChallenge challenge={challenge} onComplete={handleChallengeComplete} onTimerStart={handleTimerStart} />;
     }
     if (challenge.type === 'wordsplitter') {
-      return <WordSplitterChallenge challenge={challenge} onComplete={handleChallengeComplete} />;
+      return <WordSplitterChallenge challenge={challenge} onComplete={handleChallengeComplete} onTimerStart={handleTimerStart} />;
     }
     if (challenge.type === 'biasbreaker') {
-      return <BiasBreakerChallenge challenge={challenge} onComplete={handleChallengeComplete} />;
+      return <BiasBreakerChallenge challenge={challenge} onComplete={handleChallengeComplete} onTimerStart={handleTimerStart} />;
     }
     if (challenge.type === 'hallucinationhunter') {
-      return <HallucinationHunterChallenge challenge={challenge} onComplete={handleChallengeComplete} />;
+      return <HallucinationHunterChallenge challenge={challenge} onComplete={handleChallengeComplete} onTimerStart={handleTimerStart} />;
     }
     if (challenge.type === 'versionchaos') {
-      return <VersionChaosChallenge challenge={challenge} onComplete={handleChallengeComplete} />;
+      return <VersionChaosChallenge challenge={challenge} onComplete={handleChallengeComplete} onTimerStart={handleTimerStart} />;
     }
     if (challenge.type === 'ethicsengine') {
-      return <EthicsEngineChallenge challenge={challenge} onComplete={handleChallengeComplete} />;
+      return <EthicsEngineChallenge challenge={challenge} onComplete={handleChallengeComplete} onTimerStart={handleTimerStart} />;
     }
-    return <DenoiseChallenge challenge={challenge} onComplete={handleChallengeComplete} />;
+    return <DenoiseChallenge challenge={challenge} onComplete={handleChallengeComplete} onTimerStart={handleTimerStart} />;
   };
 
   return (

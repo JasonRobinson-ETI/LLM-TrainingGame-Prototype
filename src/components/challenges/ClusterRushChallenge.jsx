@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ChallengeIntro from './ChallengeIntro';
 
-const ClusterRushChallenge = ({ challenge, onComplete }) => {
+const ClusterRushChallenge = ({ challenge, onComplete, onTimerStart }) => {
   const [phase, setPhase] = useState('intro'); // 'intro', 'setup', 'payoff', 'complete'
   const [tasksCompleted, setTasksCompleted] = useState(0);
   const [currentTask, setCurrentTask] = useState(null);
@@ -417,88 +418,42 @@ const ClusterRushChallenge = ({ challenge, onComplete }) => {
 
   if (phase === 'intro') {
     return (
-      <div style={{ 
-        padding: 'clamp(15px, 3vw, 30px)', 
-        textAlign: 'center',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
-      }}>
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.05)',
-          backdropFilter: 'blur(20px)',
-          color: 'white',
-          padding: 'clamp(20px, 4vw, 40px)',
-          borderRadius: '20px',
-          marginBottom: 'clamp(20px, 4vw, 30px)',
-          maxWidth: '600px',
-          width: '100%',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
-        }}>
-          <h2 style={{ 
-            margin: '0 0 clamp(12px, 2vw, 20px) 0', 
-            fontSize: 'clamp(1.5rem, 5vw, 2.5rem)',
-            fontWeight: '800'
-          }}>🖥️ Cluster Rush</h2>
-          <p style={{ 
-            margin: 0, 
-            fontSize: 'clamp(0.9rem, 3vw, 1.2rem)', 
-            color: '#94a3b8',
-            lineHeight: '1.6'
-          }}>
-            Build and manage your GPU cluster at lightning speed!
-          </p>
-        </div>
-
-        <div style={{
-          background: 'rgba(139, 92, 246, 0.1)',
-          padding: 'clamp(20px, 4vw, 30px)',
-          borderRadius: '16px',
-          marginBottom: 'clamp(20px, 4vw, 30px)',
-          textAlign: 'left',
-          fontSize: 'clamp(0.85rem, 2.5vw, 1rem)',
-          lineHeight: '1.8',
-          maxWidth: '600px',
-          width: '100%',
-          border: '1px solid rgba(139, 92, 246, 0.2)',
-          color: '#94a3b8'
-        }}>
-          <p><strong style={{ color: 'white' }}>🎯 Your Mission:</strong> Complete 15 cluster tasks</p>
-          <p><strong style={{ color: 'white' }}>⚡ Speed:</strong> Click the matching action for each task</p>
-          <p><strong style={{ color: 'white' }}>⚠️ Warning:</strong> Wrong actions reduce your progress by 1</p>
-          <p style={{ marginBottom: 0 }}><strong style={{ color: 'white' }}>✅ Win Condition:</strong> Reach 15 completed tasks</p>
-        </div>
-
-        <button
-          onClick={() => setPhase('setup')}
-          style={{
-            background: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
-            color: 'white',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            padding: 'clamp(14px, 3vw, 18px) clamp(28px, 6vw, 40px)',
-            fontSize: 'clamp(1rem, 3vw, 1.3rem)',
-            fontWeight: 'bold',
-            borderRadius: '12px',
-            cursor: 'pointer',
-            boxShadow: '0 4px 20px rgba(139, 92, 246, 0.4)',
-            transition: 'all 0.3s ease'
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 6px 25px rgba(139, 92, 246, 0.5)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 20px rgba(139, 92, 246, 0.4)';
-          }}
-        >
-          🚀 Start Building
-        </button>
-      </div>
+      <ChallengeIntro
+        onStart={() => setPhase('setup')}
+        onTimerStart={onTimerStart}
+        steps={[
+          {
+            emoji: '🖥️',
+            title: 'Manage your GPU cluster FAST!',
+            description: 'Tasks keep rolling in. You are the operator \u2014 match each task to the correct action!',
+          },
+          {
+            emoji: '👆',
+            title: 'A task appears \u2014 tap its action',
+            description: 'Read the task and tap the button that matches it. Wrong answers cost you a point!',
+            demo: (
+              <div style={{ textAlign: 'center', maxWidth: '280px', margin: '0 auto' }}>
+                <div style={{ background: 'rgba(139,92,246,0.2)', border: '1px solid #8b5cf6', borderRadius: '10px', padding: '10px 16px', marginBottom: '12px', color: 'white', fontWeight: 'bold', fontSize: '0.95rem' }}>
+                  🖥️ Add GPU Node
+                </div>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  {[{ label: '⚡ Scale Up', match: false }, { label: '🖥️ Add Node', match: true }, { label: '🗑️ Remove', match: false }].map(({ label, match }) => (
+                    <div key={label} style={{ background: match ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.07)', border: `2px solid ${match ? '#10b981' : 'rgba(255,255,255,0.15)'}`, borderRadius: '8px', padding: '8px 12px', color: match ? 'white' : '#64748b', fontSize: '0.85rem', fontWeight: match ? 'bold' : 'normal' }}>
+                      {label} {match ? '\u2713' : ''}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: '10px' }}>Tap the button that matches the task!</div>
+              </div>
+            ),
+          },
+          {
+            emoji: '🏆',
+            title: 'Complete 15 tasks to win!',
+            description: 'Work fast and accurately. Complete 15 tasks before the timer runs out!',
+          },
+        ]}
+      />
     );
   }
 

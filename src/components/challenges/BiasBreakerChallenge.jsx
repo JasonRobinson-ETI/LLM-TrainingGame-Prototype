@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ChallengeIntro from './ChallengeIntro';
 
-const BiasBreakerChallenge = ({ challenge, onComplete }) => {
+const BiasBreakerChallenge = ({ challenge, onComplete, onTimerStart }) => {
   const [phase, setPhase] = useState('intro'); // intro, playing, complete
   const [currentIndex, setCurrentIndex] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
@@ -115,88 +116,42 @@ const BiasBreakerChallenge = ({ challenge, onComplete }) => {
 
   if (phase === 'intro') {
     return (
-      <div style={{ 
-        padding: 'clamp(15px, 3vw, 30px)', 
-        textAlign: 'center',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
-      }}>
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.05)',
-          backdropFilter: 'blur(20px)',
-          color: 'white',
-          padding: 'clamp(20px, 4vw, 40px)',
-          borderRadius: '20px',
-          marginBottom: 'clamp(20px, 4vw, 30px)',
-          maxWidth: '600px',
-          width: '100%',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
-        }}>
-          <h2 style={{ 
-            margin: '0 0 clamp(12px, 2vw, 20px) 0', 
-            fontSize: 'clamp(1.5rem, 5vw, 2.5rem)',
-            fontWeight: '800'
-          }}>🛡️ Bias Breaker</h2>
-          <p style={{ 
-            margin: 0, 
-            fontSize: 'clamp(0.9rem, 3vw, 1.2rem)', 
-            color: '#94a3b8',
-            lineHeight: '1.6'
-          }}>
-            You're the final safeguard before AI responses go live to millions!
-          </p>
-        </div>
-
-        <div style={{
-          background: 'rgba(139, 92, 246, 0.1)',
-          padding: 'clamp(20px, 4vw, 30px)',
-          borderRadius: '16px',
-          marginBottom: 'clamp(20px, 4vw, 30px)',
-          textAlign: 'left',
-          fontSize: 'clamp(0.85rem, 2.5vw, 1rem)',
-          lineHeight: '1.8',
-          maxWidth: '600px',
-          width: '100%',
-          border: '1px solid rgba(139, 92, 246, 0.2)',
-          color: '#94a3b8'
-        }}>
-          <p><strong style={{ color: 'white' }}>🎯 Your Mission:</strong> Filter the AI's output feed</p>
-          <p><strong style={{ color: 'white' }}>🚫 Flag:</strong> Biased, stereotyping, or unfair statements</p>
-          <p><strong style={{ color: 'white' }}>✅ Let Pass:</strong> Neutral, factual, or harmless content</p>
-          <p style={{ marginBottom: 0 }}><strong style={{ color: 'white' }}>✅ Win Condition:</strong> Get majority of answers correct</p>
-        </div>
-
-        <button
-          onClick={startGame}
-          style={{
-            background: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
-            color: 'white',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            padding: 'clamp(14px, 3vw, 18px) clamp(28px, 6vw, 40px)',
-            fontSize: 'clamp(1rem, 3vw, 1.3rem)',
-            fontWeight: 'bold',
-            borderRadius: '12px',
-            cursor: 'pointer',
-            boxShadow: '0 4px 20px rgba(139, 92, 246, 0.4)',
-            transition: 'all 0.3s ease'
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 6px 25px rgba(139, 92, 246, 0.5)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 20px rgba(139, 92, 246, 0.4)';
-          }}
-        >
-          🚀 Start Filtering
-        </button>
-      </div>
+      <ChallengeIntro
+        onStart={startGame}
+        onTimerStart={onTimerStart}
+        steps={[
+          {
+            emoji: '🛡️',
+            title: 'Stop biased AI responses going live!',
+            description: 'You are the final filter. Real AI systems need humans to catch bias before it spreads to millions.',
+          },
+          {
+            emoji: '📋',
+            title: 'Is it biased? FLAG it!',
+            description: 'A statement appears. Tap FLAG for biased or unfair content. Tap LET PASS for neutral facts.',
+            demo: (
+              <div style={{ textAlign: 'center', maxWidth: '290px', margin: '0 auto' }}>
+                <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', color: '#cbd5e1', fontSize: '0.9rem', fontStyle: 'italic' }}>
+                  &ldquo;Women are naturally less logical.&rdquo;
+                </div>
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                  <div style={{ background: 'rgba(239,68,68,0.3)', border: '2px solid #ef4444', borderRadius: '10px', padding: '10px 20px', color: 'white', fontWeight: 'bold', fontSize: '0.95rem' }}>
+                    🚫 FLAG
+                  </div>
+                  <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '10px', padding: '10px 16px', color: '#64748b', fontSize: '0.95rem' }}>
+                    ✅ Let Pass
+                  </div>
+                </div>
+              </div>
+            ),
+          },
+          {
+            emoji: '✅',
+            title: 'Get the majority correct to win!',
+            description: 'Statements fly by fast. Trust your instincts \u2014 biased stereotyping = FLAG, neutral facts = LET PASS.',
+          },
+        ]}
+      />
     );
   }
 

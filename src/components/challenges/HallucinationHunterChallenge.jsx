@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ChallengeIntro from './ChallengeIntro';
 
-const HallucinationHunterChallenge = ({ challenge, onComplete }) => {
+const HallucinationHunterChallenge = ({ challenge, onComplete, onTimerStart }) => {
   const [phase, setPhase] = useState('intro'); // intro, playing, complete
   const [currentStatements, setCurrentStatements] = useState([]);
   const [timeLeft, setTimeLeft] = useState(30);
@@ -167,106 +168,40 @@ const HallucinationHunterChallenge = ({ challenge, onComplete }) => {
 
   if (phase === 'intro') {
     return (
-      <div style={{ 
-        padding: 'clamp(15px, 3vw, 30px)', 
-        textAlign: 'center',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
-      }}>
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.05)',
-          backdropFilter: 'blur(20px)',
-          color: 'white',
-          padding: 'clamp(20px, 4vw, 40px)',
-          borderRadius: '20px',
-          marginBottom: 'clamp(20px, 4vw, 30px)',
-          maxWidth: '600px',
-          width: '100%',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
-        }}>
-          <h2 style={{ 
-            margin: '0 0 clamp(12px, 2vw, 20px) 0', 
-            fontSize: 'clamp(1.5rem, 5vw, 2.5rem)',
-            fontWeight: '800'
-          }}>🔍 Hallucination Hunter</h2>
-          <p style={{ 
-            margin: 0, 
-            fontSize: 'clamp(0.9rem, 3vw, 1.2rem)', 
-            color: '#94a3b8',
-            lineHeight: '1.6'
-          }}>
-            Hunt down AI hallucinations before they spread misinformation!
-          </p>
-        </div>
-
-        <div style={{
-          background: 'rgba(139, 92, 246, 0.1)',
-          padding: 'clamp(20px, 4vw, 30px)',
-          borderRadius: '16px',
-          marginBottom: 'clamp(20px, 4vw, 30px)',
-          textAlign: 'left',
-          fontSize: 'clamp(0.85rem, 2.5vw, 1rem)',
-          lineHeight: '1.8',
-          maxWidth: '600px',
-          width: '100%',
-          border: '1px solid rgba(139, 92, 246, 0.2)',
-          color: '#94a3b8'
-        }}>
-          <p><strong style={{ color: 'white' }}>🎯 Your Mission:</strong> Spot AI hallucinations in a stream of statements</p>
-          <p><strong style={{ color: 'white' }}>👆 Tap:</strong> False or nonsensical statements (hallucinations)</p>
-          <p><strong style={{ color: 'white' }}>⏰ Time:</strong> 30 seconds of rapid fact-checking</p>
-          <p><strong style={{ color: 'white' }}>📊 Goal:</strong> Catch more hallucinations than you miss</p>
-          <p style={{ marginBottom: 0 }}><strong style={{ color: 'white' }}>✅ Win Condition:</strong> Score higher than random chance</p>
-        </div>
-
-        <div style={{
-          background: 'rgba(59, 130, 246, 0.1)',
-          padding: 'clamp(14px, 3vw, 16px)',
-          borderRadius: '12px',
-          marginBottom: 'clamp(20px, 4vw, 30px)',
-          fontSize: 'clamp(0.8rem, 2.5vw, 0.95rem)',
-          maxWidth: '600px',
-          width: '100%',
-          border: '1px solid rgba(59, 130, 246, 0.2)',
-          color: '#94a3b8',
-          lineHeight: '1.6'
-        }}>
-          <strong style={{ color: 'white' }}>💡 Examples:</strong><br/>
-          <span style={{ color: '#ef4444' }}>❌ "The Eiffel Tower is in Berlin"</span> (hallucination - tap it!)<br/>
-          <span style={{ color: '#10b981' }}>✅ "Water boils at 100°C"</span> (true fact - leave it!)
-        </div>
-
-        <button
-          onClick={startGame}
-          style={{
-            background: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
-            color: 'white',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            padding: 'clamp(14px, 3vw, 18px) clamp(28px, 6vw, 40px)',
-            fontSize: 'clamp(1rem, 3vw, 1.3rem)',
-            fontWeight: 'bold',
-            borderRadius: '12px',
-            cursor: 'pointer',
-            boxShadow: '0 4px 20px rgba(139, 92, 246, 0.4)',
-            transition: 'all 0.3s ease'
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 6px 25px rgba(139, 92, 246, 0.5)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 20px rgba(139, 92, 246, 0.4)';
-          }}
-        >
-          🏹 Start Hunting
-        </button>
-      </div>
+      <ChallengeIntro
+        onStart={startGame}
+        onTimerStart={onTimerStart}
+        steps={[
+          {
+            emoji: '🔍',
+            title: 'The AI is making stuff up!',
+            description: 'AI hallucinations are fake \u201cfacts\u201d that sound real but are completely wrong. Don\u2019t let them spread!',
+          },
+          {
+            emoji: '👆',
+            title: 'Tap statements that are FAKE',
+            description: 'If a statement is false or nonsensical \u2014 tap it! If it\u2019s true \u2014 leave it alone.',
+            demo: (
+              <div style={{ maxWidth: '300px', margin: '0 auto' }}>
+                {[
+                  { text: '\u201cThe Eiffel Tower is in Berlin\u201d', fake: true },
+                  { text: '\u201cWater boils at 100\u00b0C\u201d', fake: false },
+                ].map((item, i) => (
+                  <div key={i} style={{ background: item.fake ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.1)', border: `1px solid ${item.fake ? '#ef4444' : '#10b981'}`, borderRadius: '10px', padding: '8px 14px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'white', fontSize: '0.85rem' }}>
+                    <span>{item.text}</span>
+                    <span style={{ marginLeft: '10px', fontWeight: 'bold', color: item.fake ? '#ef4444' : '#10b981' }}>{item.fake ? '👆 TAP' : '\u2713 OK'}</span>
+                  </div>
+                ))}
+              </div>
+            ),
+          },
+          {
+            emoji: '🏹',
+            title: 'Catch as many hallucinations as you can!',
+            description: '30 seconds of rapid fact-checking. Score higher than random chance and you win!',
+          },
+        ]}
+      />
     );
   }
 

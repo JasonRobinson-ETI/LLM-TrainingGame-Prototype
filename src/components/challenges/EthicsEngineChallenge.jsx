@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ChallengeIntro from './ChallengeIntro';
 
-const EthicsEngineChallenge = ({ challenge, onComplete }) => {
+const EthicsEngineChallenge = ({ challenge, onComplete, onTimerStart }) => {
   const [currentRound, setCurrentRound] = useState(0);
   const [selectedResponse, setSelectedResponse] = useState(null);
   const [feedback, setFeedback] = useState(null);
@@ -461,119 +462,41 @@ const EthicsEngineChallenge = ({ challenge, onComplete }) => {
 
   if (showIntro) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-        padding: 'clamp(12px, 3vw, 30px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}>
-        <div style={{
-          maxWidth: '800px',
-          width: '100%',
-          background: 'rgba(255, 255, 255, 0.05)',
-          backdropFilter: 'blur(20px)',
-          borderRadius: 'clamp(12px, 3vw, 20px)',
-          padding: 'clamp(20px, 4vw, 40px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)'
-        }}>
-          <h1 style={{
-            fontSize: 'clamp(1.8rem, 6vw, 2.8rem)',
-            margin: '0 0 clamp(12px, 3vw, 20px) 0',
-            color: 'white',
-            textAlign: 'center'
-          }}>
-            ⚖️ Ethics Engine
-          </h1>
-          
-          <p style={{
-            fontSize: 'clamp(0.9rem, 2.8vw, 1.1rem)',
-            color: '#94a3b8',
-            textAlign: 'center',
-            marginBottom: 'clamp(20px, 4vw, 30px)',
-            lineHeight: '1.5'
-          }}>
-            Master the art of value alignment by balancing three core principles
-          </p>
-
-          <div style={{
-            background: 'rgba(139, 92, 246, 0.1)',
-            borderRadius: 'clamp(10px, 2.5vw, 15px)',
-            padding: 'clamp(15px, 3vw, 25px)',
-            marginBottom: 'clamp(15px, 3vw, 25px)',
-            border: '1px solid rgba(139, 92, 246, 0.3)'
-          }}>
-            <h3 style={{
-              color: '#a78bfa',
-              fontSize: 'clamp(1rem, 2.8vw, 1.2rem)',
-              margin: '0 0 clamp(10px, 2vw, 15px) 0'
-            }}>
-              🎯 Your Mission:
-            </h3>
-            <ul style={{
-              color: 'white',
-              fontSize: 'clamp(0.85rem, 2.5vw, 1rem)',
-              lineHeight: '1.6',
-              margin: 0,
-              paddingLeft: 'clamp(18px, 3vw, 25px)'
-            }}>
-              <li style={{ marginBottom: '6px' }}>Review {totalRounds} ethical dilemmas</li>
-              <li style={{ marginBottom: '6px' }}>Balance helpful, harmless, and honest</li>
-              <li style={{ marginBottom: '6px' }}>Keep all values above 35%</li>
-              <li>Decide within 15 seconds each</li>
-            </ul>
-          </div>
-
-          <div style={{
-            background: 'rgba(251, 191, 36, 0.1)',
-            borderRadius: 'clamp(10px, 2.5vw, 15px)',
-            padding: 'clamp(15px, 3vw, 25px)',
-            marginBottom: 'clamp(15px, 3vw, 25px)',
-            border: '1px solid rgba(251, 191, 36, 0.3)'
-          }}>
-            <h3 style={{
-              color: '#fbbf24',
-              fontSize: 'clamp(1rem, 2.8vw, 1.2rem)',
-              margin: '0 0 clamp(10px, 2vw, 15px) 0'
-            }}>
-              💡 The Alignment Triad:
-            </h3>
-            <div style={{ color: 'white', fontSize: 'clamp(0.85rem, 2.5vw, 1rem)', lineHeight: '1.6' }}>
-              <div style={{ marginBottom: 'clamp(6px, 1.5vw, 10px)' }}>
-                <strong style={{ color: '#10b981' }}>Helpful:</strong> Assist users in achieving their goals
+      <ChallengeIntro
+        onStart={() => setShowIntro(false)}
+        onTimerStart={onTimerStart}
+        steps={[
+          {
+            emoji: '⚖️',
+            title: 'Train the AI\u2019s ethics engine!',
+            description: 'Should AI be helpful, harmless, or honest? The answer: ALL THREE \u2014 in balance!',
+          },
+          {
+            emoji: '📖',
+            title: 'Read the scenario and 3 responses',
+            description: 'A tricky situation is shown with 3 possible AI responses. Only one strikes the right balance.',
+            demo: (
+              <div style={{ maxWidth: '300px', margin: '0 auto', textAlign: 'left' }}>
+                {[
+                  { text: '\u201cSure, here are some insults...\u201d', type: '\u274c Bad', col: '#ef4444', highlight: false },
+                  { text: '\u201cI won\u2019t help with that, but I can...\u201d', type: '\u2705 Best', col: '#10b981', highlight: true },
+                  { text: '\u201cThat\u2019s wrong. No.\u201d', type: '\u26a0\ufe0f OK', col: '#f59e0b', highlight: false },
+                ].map((opt, i) => (
+                  <div key={i} style={{ background: opt.highlight ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)', border: `2px solid ${opt.highlight ? '#10b981' : 'rgba(255,255,255,0.1)'}`, borderRadius: '10px', padding: '8px 12px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ color: opt.col, fontWeight: 'bold', fontSize: '0.75rem', flexShrink: 0, minWidth: '48px' }}>{opt.type}</span>
+                    <span style={{ color: '#cbd5e1', fontSize: '0.82rem' }}>{opt.text}</span>
+                  </div>
+                ))}
               </div>
-              <div style={{ marginBottom: 'clamp(6px, 1.5vw, 10px)' }}>
-                <strong style={{ color: '#ec4899' }}>Harmless:</strong> Prevent harm to users and others
-              </div>
-              <div>
-                <strong style={{ color: '#3b82f6' }}>Honest:</strong> Provide truthful and accurate information
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setShowIntro(false)}
-            style={{
-              width: '100%',
-              padding: 'clamp(14px, 3vw, 18px)',
-              fontSize: 'clamp(1rem, 3vw, 1.2rem)',
-              fontWeight: 'bold',
-              color: 'white',
-              background: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
-              border: 'none',
-              borderRadius: 'clamp(10px, 2.5vw, 12px)',
-              cursor: 'pointer',
-              transition: 'transform 0.2s',
-              minHeight: '48px'
-            }}
-            onMouseEnter={e => e.target.style.transform = 'scale(1.02)'}
-            onMouseLeave={e => e.target.style.transform = 'scale(1)'}
-          >
-            Begin Alignment Training →
-          </button>
-        </div>
-      </div>
+            ),
+          },
+          {
+            emoji: '⚖️',
+            title: 'Balanced responses WIN!',
+            description: 'Pick the response that is helpful AND harmless AND honest. Keep all values above 35% to win!',
+          },
+        ]}
+      />
     );
   }
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ChallengeIntro from './ChallengeIntro';
 
-const WordSplitterChallenge = ({ challenge, onComplete }) => {
+const WordSplitterChallenge = ({ challenge, onComplete, onTimerStart }) => {
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [splits, setSplits] = useState([]);
   const [vocabulary, setVocabulary] = useState(new Set());
@@ -320,89 +321,39 @@ const WordSplitterChallenge = ({ challenge, onComplete }) => {
 
   if (phase === 'intro') {
     return (
-      <div style={{ 
-        padding: 'clamp(15px, 3vw, 30px)', 
-        textAlign: 'center',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
-      }}>
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.05)',
-          backdropFilter: 'blur(20px)',
-          color: 'white',
-          padding: 'clamp(20px, 4vw, 40px)',
-          borderRadius: '20px',
-          marginBottom: 'clamp(20px, 4vw, 30px)',
-          maxWidth: '600px',
-          width: '100%',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
-        }}>
-          <h2 style={{ 
-            margin: '0 0 clamp(12px, 2vw, 20px) 0', 
-            fontSize: 'clamp(1.5rem, 5vw, 2.5rem)',
-            fontWeight: '800'
-          }}>🔡 Word Splitter</h2>
-          <p style={{ 
-            margin: 0, 
-            fontSize: 'clamp(0.9rem, 3vw, 1.2rem)', 
-            color: '#94a3b8',
-            lineHeight: '1.6'
-          }}>
-            Build an efficient tokenizer for your LLM!
-          </p>
-        </div>
-
-        <div style={{
-          background: 'rgba(139, 92, 246, 0.1)',
-          padding: 'clamp(20px, 4vw, 30px)',
-          borderRadius: '16px',
-          marginBottom: 'clamp(20px, 4vw, 30px)',
-          textAlign: 'left',
-          fontSize: 'clamp(0.85rem, 2.5vw, 1rem)',
-          lineHeight: '1.8',
-          maxWidth: '600px',
-          width: '100%',
-          border: '1px solid rgba(139, 92, 246, 0.2)',
-          color: '#94a3b8'
-        }}>
-          <p><strong style={{ color: 'white' }}>🎯 Your Mission:</strong> Split words into reusable tokens</p>
-          <p><strong style={{ color: 'white' }}>📏 Goal:</strong> Balance vocabulary size with compression</p>
-          <p><strong style={{ color: 'white' }}>✂️ How:</strong> Click between letters to create split points</p>
-          <p><strong style={{ color: 'white' }}>💡 Strategy:</strong> Reuse common prefixes/suffixes (un-, -ing, -tion)</p>
-          <p style={{ marginBottom: 0 }}><strong style={{ color: 'white' }}>✅ Win Condition:</strong> Average efficiency above 50%</p>
-        </div>
-
-        <button
-          onClick={() => setPhase('active')}
-          style={{
-            background: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
-            color: 'white',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            padding: 'clamp(14px, 3vw, 18px) clamp(28px, 6vw, 40px)',
-            fontSize: 'clamp(1rem, 3vw, 1.3rem)',
-            fontWeight: 'bold',
-            borderRadius: '12px',
-            cursor: 'pointer',
-            boxShadow: '0 4px 20px rgba(139, 92, 246, 0.4)',
-            transition: 'all 0.3s ease'
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 6px 25px rgba(139, 92, 246, 0.5)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 20px rgba(139, 92, 246, 0.4)';
-          }}
-        >
-          🚀 Start Tokenizing
-        </button>
-      </div>
+      <ChallengeIntro
+        onStart={() => setPhase('active')}
+        onTimerStart={onTimerStart}
+        steps={[
+          {
+            emoji: '✂️',
+            title: 'Teach the AI how to read words!',
+            description: 'AI breaks words into tiny pieces called tokens. Your job: find the best split points!',
+          },
+          {
+            emoji: '👆',
+            title: 'Tap BETWEEN letters to split',
+            description: 'Click the gaps between letters to cut the word into reusable pieces.',
+            demo: (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontSize: 'clamp(1rem, 4vw, 1.25rem)', fontWeight: 'bold', marginBottom: '10px' }}>
+                  {['un', '✂', 'happy', '✂', 'ness'].map((part, i) => (
+                    <span key={i} style={{ color: part === '✂' ? '#ec4899' : 'white', background: part !== '✂' ? 'rgba(139,92,246,0.3)' : 'transparent', border: part !== '✂' ? '1px solid rgba(139,92,246,0.5)' : 'none', padding: part !== '✂' ? '3px 8px' : '0 3px', borderRadius: part !== '✂' ? '6px' : '0', fontSize: part === '✂' ? '1.1em' : '1em' }}>
+                      {part}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Tap in the gaps between letters to cut</div>
+              </div>
+            ),
+          },
+          {
+            emoji: '🏆',
+            title: 'Reuse common pieces to score high!',
+            description: 'Pieces like \'un-\', \'-ing\', \'-tion\' appear in many words. Average efficiency above 50% to win!',
+          },
+        ]}
+      />
     );
   }
 

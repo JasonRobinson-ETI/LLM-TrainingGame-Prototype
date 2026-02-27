@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ChallengeIntro from './ChallengeIntro';
 
-const ContextCacheChallenge = ({ challenge, onComplete }) => {
+const ContextCacheChallenge = ({ challenge, onComplete, onTimerStart }) => {
   const [phase, setPhase] = useState('intro'); // 'intro', 'incoming', 'query', 'result'
   const [memorySlots, setMemorySlots] = useState(Array(8).fill(null));
   const [incomingChunks, setIncomingChunks] = useState([]);
@@ -224,89 +225,39 @@ const ContextCacheChallenge = ({ challenge, onComplete }) => {
 
   if (phase === 'intro') {
     return (
-      <div style={{ 
-        padding: 'clamp(15px, 3vw, 30px)', 
-        textAlign: 'center',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
-      }}>
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.05)',
-          backdropFilter: 'blur(20px)',
-          color: 'white',
-          padding: 'clamp(20px, 4vw, 40px)',
-          borderRadius: '20px',
-          marginBottom: 'clamp(20px, 4vw, 30px)',
-          maxWidth: '600px',
-          width: '100%',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
-        }}>
-          <h2 style={{ 
-            margin: '0 0 clamp(12px, 2vw, 20px) 0', 
-            fontSize: 'clamp(1.5rem, 5vw, 2.5rem)',
-            fontWeight: '800'
-          }}>🧠 Context Cache</h2>
-          <p style={{ 
-            margin: 0, 
-            fontSize: 'clamp(0.9rem, 3vw, 1.2rem)', 
-            color: '#94a3b8',
-            lineHeight: '1.6'
-          }}>
-            Manage the LLM's memory efficiently!
-          </p>
-        </div>
-
-        <div style={{
-          background: 'rgba(139, 92, 246, 0.1)',
-          padding: 'clamp(20px, 4vw, 30px)',
-          borderRadius: '16px',
-          marginBottom: 'clamp(20px, 4vw, 30px)',
-          textAlign: 'left',
-          fontSize: 'clamp(0.85rem, 2.5vw, 1rem)',
-          lineHeight: '1.8',
-          maxWidth: '600px',
-          width: '100%',
-          border: '1px solid rgba(139, 92, 246, 0.2)',
-          color: '#94a3b8'
-        }}>
-          <p><strong style={{ color: 'white' }}>🎯 Your Mission:</strong> Store important dialogue chunks in limited memory</p>
-          <p><strong style={{ color: 'white' }}>🧩 Chunks:</strong> Each has a priority - higher = more important</p>
-          <p><strong style={{ color: 'white' }}>💾 Slots:</strong> Only 8 memory slots available</p>
-          <p><strong style={{ color: 'white' }}>❓ Queries:</strong> You'll be tested on what you remembered</p>
-          <p style={{ marginBottom: 0 }}><strong style={{ color: 'white' }}>✅ Win Condition:</strong> Score 20+ points (get questions right)</p>
-        </div>
-
-        <button
-          onClick={() => setPhase('incoming')}
-          style={{
-            background: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
-            color: 'white',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            padding: 'clamp(14px, 3vw, 18px) clamp(28px, 6vw, 40px)',
-            fontSize: 'clamp(1rem, 3vw, 1.3rem)',
-            fontWeight: 'bold',
-            borderRadius: '12px',
-            cursor: 'pointer',
-            boxShadow: '0 4px 20px rgba(139, 92, 246, 0.4)',
-            transition: 'all 0.3s ease'
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 6px 25px rgba(139, 92, 246, 0.5)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 4px 20px rgba(139, 92, 246, 0.4)';
-          }}
-        >
-          🚀 Start Caching
-        </button>
-      </div>
+      <ChallengeIntro
+        onStart={() => setPhase('incoming')}
+        onTimerStart={onTimerStart}
+        steps={[
+          {
+            emoji: '🧠',
+            title: 'The AI has only 8 memory slots!',
+            description: 'Dialogue keeps streaming in but you can only store 8 chunks. Choose what to keep wisely!',
+          },
+          {
+            emoji: '💾',
+            title: 'Tap to SAVE the important chunks',
+            description: 'Each chunk has a priority rating. Save the highest-priority ones before memory fills up.',
+            demo: (
+              <div style={{ maxWidth: '240px', margin: '0 auto' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '10px' }}>
+                  {[{s:true,l:'★★★'},{s:true,l:'★★☆'},{s:false,l:'★☆☆'},{s:false,l:'★★★'},{s:false,l:'★☆☆'},{s:true,l:'★★☆'},{s:false,l:'empty'},{s:false,l:'empty'}].map((slot, i) => (
+                    <div key={i} style={{ height: '36px', borderRadius: '8px', background: slot.s ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.06)', border: `1px solid ${slot.s ? '#8b5cf6' : 'rgba(255,255,255,0.12)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: slot.s ? '#c4b5fd' : '#475569' }}>
+                      {slot.l}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.8rem' }}>Tap a chunk to save it to a slot</div>
+              </div>
+            ),
+          },
+          {
+            emoji: '❓',
+            title: 'Answer questions about what you saved!',
+            description: 'After saving, you get quizzed on the stored content. Score 20+ points to win!',
+          },
+        ]}
+      />
     );
   }
 
