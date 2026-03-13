@@ -231,8 +231,8 @@ const VersionChaosChallenge = ({ challenge, onComplete, onTimerStart }) => {
         steps={[
           {
             emoji: '🔄',
-            title: 'Multiple broken versions just deployed!',
-            description: 'Your job: review each model version and identify the stable one before things go wrong!',
+            title: 'LLM Model Checkpoint Picker!',
+            description: 'During training, LLMs save "checkpoints" — snapshots of the model. Some are great, some are broken. Pick the right one!',
           },
           {
             emoji: '📊',
@@ -257,8 +257,8 @@ const VersionChaosChallenge = ({ challenge, onComplete, onTimerStart }) => {
           },
           {
             emoji: '🚀',
-            title: 'Deploy the STABLE version each round!',
-            description: 'Complete 5 deployment decisions in 10 seconds each. Only stable versions keep things running!',
+            title: 'Deploy the best LLM checkpoint!',
+            description: 'Real AI teams must pick the best model version. 5 rounds, 10 seconds each — choose wisely or the LLM fails!',
           },
         ]}
       />
@@ -297,7 +297,7 @@ const VersionChaosChallenge = ({ challenge, onComplete, onTimerStart }) => {
             color: 'white',
             fontWeight: 'bold'
           }}>
-            🔄 Version Chaos
+            🔄 LLM Checkpoint Selection
           </h2>
           <div style={{
             display: 'flex',

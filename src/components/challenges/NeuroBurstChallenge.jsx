@@ -386,8 +386,8 @@ const NeuroBurstChallenge = ({ challenge, onComplete, onTimerStart }) => {
         steps={[
           {
             emoji: '⚡',
-            title: 'Your neural network is broken!',
-            description: 'Neurons are firing randomly and predictions are wrong. You need to reconfigure them!',
+            title: 'LLM Neural Network Weights!',
+            description: 'LLMs have billions of "neurons" with weights that control their output. You\'re manually tuning them — just like training does!',
           },
           {
             emoji: '🔘',
@@ -406,8 +406,8 @@ const NeuroBurstChallenge = ({ challenge, onComplete, onTimerStart }) => {
           },
           {
             emoji: '✅',
-            title: 'Match the target pattern!',
-            description: 'Get the majority of predictions correct across all rounds and you win!',
+            title: 'You\'re training the LLM by hand!',
+            description: 'Real training adjusts billions of weights automatically. Get the majority of predictions correct to pass!',
           },
         ]}
       />
@@ -434,7 +434,7 @@ const NeuroBurstChallenge = ({ challenge, onComplete, onTimerStart }) => {
         textTransform: 'uppercase',
         lineHeight: '1.2'
       }}>
-        ⚡ NeuroBurst
+        ⚡ LLM Weight Tuning
       </h3>
       
       <p style={{ 
@@ -446,7 +446,7 @@ const NeuroBurstChallenge = ({ challenge, onComplete, onTimerStart }) => {
         padding: '0 8px',
         lineHeight: '1.3'
       }}>
-        Tap neurons ⚡ to toggle them on/off until the output matches!
+        Toggle neuron weights ⚡ until the LLM\'s prediction is correct!
       </p>
 
       {/* Stats Bar */}

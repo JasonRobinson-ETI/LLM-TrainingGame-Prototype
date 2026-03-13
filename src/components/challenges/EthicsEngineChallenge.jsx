@@ -468,8 +468,8 @@ const EthicsEngineChallenge = ({ challenge, onComplete, onTimerStart }) => {
         steps={[
           {
             emoji: '⚖️',
-            title: 'Train the AI\u2019s ethics engine!',
-            description: 'Should AI be helpful, harmless, or honest? The answer: ALL THREE \u2014 in balance!',
+            title: 'RLHF — Train the LLM\'s Values!',
+            description: 'Real LLMs use RLHF (Reinforcement Learning from Human Feedback). YOU are the human giving feedback to align the AI!',
           },
           {
             emoji: '📖',
@@ -492,8 +492,8 @@ const EthicsEngineChallenge = ({ challenge, onComplete, onTimerStart }) => {
           },
           {
             emoji: '⚖️',
-            title: 'Balanced responses WIN!',
-            description: 'Pick the response that is helpful AND harmless AND honest. Keep all values above 35% to win!',
+            title: 'You\'re doing real RLHF!',
+            description: 'This is exactly how ChatGPT was trained — humans picked the best response. Keep the LLM balanced to pass!',
           },
         ]}
       />
@@ -534,7 +534,7 @@ const EthicsEngineChallenge = ({ challenge, onComplete, onTimerStart }) => {
             color: 'white',
             fontWeight: 'bold'
           }}>
-            ⚖️ Ethics Engine
+            ⚖️ RLHF — Align the LLM
           </h2>
           
           <div style={{

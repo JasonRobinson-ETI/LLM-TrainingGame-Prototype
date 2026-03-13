@@ -122,8 +122,8 @@ const BiasBreakerChallenge = ({ challenge, onComplete, onTimerStart }) => {
         steps={[
           {
             emoji: '🛡️',
-            title: 'Stop biased AI responses going live!',
-            description: 'You are the final filter. Real AI systems need humans to catch bias before it spreads to millions.',
+            title: 'LLM Training Data Filter!',
+            description: 'LLMs learn from data — if the training data is biased, the AI becomes biased too. Your job: filter it out before the model learns it!',
           },
           {
             emoji: '📋',
@@ -147,8 +147,8 @@ const BiasBreakerChallenge = ({ challenge, onComplete, onTimerStart }) => {
           },
           {
             emoji: '✅',
-            title: 'Get the majority correct to win!',
-            description: 'Statements fly by fast. Trust your instincts \u2014 biased stereotyping = FLAG, neutral facts = LET PASS.',
+            title: 'You\'re cleaning the training set!',
+            description: 'Real LLM teams do exactly this — humans review data to remove bias before training. Get the majority right to keep the AI fair!',
           },
         ]}
       />
@@ -209,7 +209,7 @@ const BiasBreakerChallenge = ({ challenge, onComplete, onTimerStart }) => {
           flexWrap: 'wrap'
         }}>
           <div style={{ whiteSpace: 'nowrap' }}>📊 {currentIndex + 1}/{shuffledMessages.length}</div>
-          <div style={{ whiteSpace: 'nowrap' }}>🛡️ Bias Breaker</div>
+          <div style={{ whiteSpace: 'nowrap' }}>🛡️ Training Data Filter</div>
           <div style={{ whiteSpace: 'nowrap' }}>✓ {correctCount}</div>
         </div>
 

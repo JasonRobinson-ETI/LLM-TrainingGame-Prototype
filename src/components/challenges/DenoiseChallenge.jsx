@@ -231,8 +231,8 @@ const DenoiseChallenge = ({ challenge, onComplete, onTimerStart }) => {
         steps={[
           {
             emoji: '📡',
-            title: 'Your AI signal is corrupted!',
-            description: 'Noise is breaking the training data. You need to clean it up before the AI can learn properly.',
+            title: 'LLM Training Data is Noisy!',
+            description: 'Before an LLM can learn, its training data must be cleaned. Noise = garbage in, garbage out!',
           },
           {
             emoji: '🎚️',
@@ -254,8 +254,8 @@ const DenoiseChallenge = ({ challenge, onComplete, onTimerStart }) => {
           },
           {
             emoji: '📊',
-            title: 'Fill the bar to 80% to win!',
-            description: 'Hold the signal quality at 80%+ for 2 seconds and you\'re done. Watch for the green zone!',
+            title: 'Clean the data for the LLM!',
+            description: 'Real AI teams spend months cleaning data. Hold quality at 80%+ for 2 seconds to pass — the LLM needs clean input!',
           },
         ]}
       />
@@ -283,7 +283,7 @@ const DenoiseChallenge = ({ challenge, onComplete, onTimerStart }) => {
         wordBreak: 'break-word',
         lineHeight: '1.2'
       }}>
-        🤖 Denoising BERT
+        � LLM Data Cleaning
       </h3>
       
       <p className="denoise-description" style={{ 
@@ -295,7 +295,7 @@ const DenoiseChallenge = ({ challenge, onComplete, onTimerStart }) => {
         padding: '0 8px',
         lineHeight: '1.3'
       }}>
-        Clean the corrupted neural signal to restore the AI!
+        Clean the training data so the LLM can learn properly!
       </p>
 
       {/* Enhanced signal visualization with particle background */}

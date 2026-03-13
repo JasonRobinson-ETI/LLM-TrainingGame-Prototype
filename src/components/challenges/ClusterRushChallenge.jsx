@@ -424,8 +424,8 @@ const ClusterRushChallenge = ({ challenge, onComplete, onTimerStart }) => {
         steps={[
           {
             emoji: '🖥️',
-            title: 'Manage your GPU cluster FAST!',
-            description: 'Tasks keep rolling in. You are the operator \u2014 match each task to the correct action!',
+            title: 'LLM GPU Training Cluster!',
+            description: 'Training an LLM like GPT-4 needs thousands of GPUs working together. You\'re the engineer keeping the cluster running!',
           },
           {
             emoji: '👆',
@@ -449,8 +449,8 @@ const ClusterRushChallenge = ({ challenge, onComplete, onTimerStart }) => {
           },
           {
             emoji: '🏆',
-            title: 'Complete 15 tasks to win!',
-            description: 'Work fast and accurately. Complete 15 tasks before the timer runs out!',
+            title: 'Keep the LLM training!',
+            description: 'If the cluster goes down, training stops and millions of dollars are wasted. Complete 15 tasks to keep it running!',
           },
         ]}
       />

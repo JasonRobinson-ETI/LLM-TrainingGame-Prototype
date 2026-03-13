@@ -141,7 +141,7 @@ const ChallengeModal = ({ challenge, onComplete }) => {
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis'
-          }}>⚡ CHALLENGE ALERT!</h2>
+          }}>⚡ LLM CHALLENGE!</h2>
           <div className={timeLeft <= 10 ? 'pulse' : ''} style={{
             fontSize: 'clamp(1.5rem, 5vw, 2rem)',
             fontWeight: 'bold',

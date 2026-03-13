@@ -15,7 +15,8 @@ function App() {
     connected, 
     gameState, 
     sendMessage, 
-    messages 
+    messages,
+    wasKicked 
   } = useWebSocket();
 
   // Check if /teacher is in the URL path
@@ -60,6 +61,60 @@ function App() {
       // no-op
     }
   }, [role, connected, clientName]);
+
+  // Show kicked screen for previously kicked students
+  if (wasKicked && !isTeacherRoute) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      }}>
+        <div style={{
+          textAlign: 'center',
+          background: 'rgba(255, 255, 255, 0.7)',
+          backdropFilter: 'blur(40px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+          padding: '48px',
+          borderRadius: '24px',
+          border: '1px solid rgba(255, 59, 48, 0.3)',
+          boxShadow: '0 8px 32px rgba(255, 59, 48, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.7)',
+          maxWidth: '500px',
+          width: '100%'
+        }}>
+          <div style={{ fontSize: '4rem', marginBottom: '24px' }}>🚫</div>
+          <h2 style={{ fontSize: '2rem', fontWeight: '600', color: '#1d1d1f', marginBottom: '16px' }}>
+            You've Been Removed
+          </h2>
+          <p style={{ fontSize: '1.2rem', color: '#86868b', lineHeight: '1.5', marginBottom: '24px' }}>
+            The teacher has removed you from the game. Please speak with your teacher if you have questions.
+          </p>
+          <button
+            onClick={() => {
+              sessionStorage.removeItem('wasKicked');
+              window.location.reload();
+            }}
+            style={{
+              background: 'linear-gradient(135deg, rgba(0, 122, 255, 0.9), rgba(10, 132, 255, 0.9))',
+              color: '#1d1d1f',
+              padding: '14px 28px',
+              fontSize: '1rem',
+              fontWeight: '600',
+              border: '1px solid rgba(255, 255, 255, 0.7)',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              boxShadow: '0 4px 16px rgba(0, 122, 255, 0.3)',
+              transition: 'all 0.2s'
+            }}
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Show name input for students (not on teacher route)
   if (!role && !isTeacherRoute) {

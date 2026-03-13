@@ -17,7 +17,7 @@ class LLMService {
       return base.replace(/\/$/, '');
     };
 
-    const manualHosts = ['192.168.1.156', '192.168.1.53', '192.168.1.11'];
+    const manualHosts = ['192.168.68.8', '192.168.68.10',];
     
     // Combine manual, env, and local hosts into a unique set
     const bases = new Set();

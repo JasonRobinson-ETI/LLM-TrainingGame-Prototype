@@ -1,170 +1,25 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Transition, Dialog } from '@headlessui/react';
-import { QRCodeSVG } from 'qrcode.react';
-import LLMDisplay from './LLMDisplay';
+import { readFileSync, writeFileSync } from 'fs';
 
-const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
-  const [activityLog, setActivityLog] = useState([]);
-  const [showResetDialog, setShowResetDialog] = useState(false);
-  const [lastProcessedIndex, setLastProcessedIndex] = useState(0);
-  const [availableModels, setAvailableModels] = useState([]);
-  const [selectedModel, setSelectedModel] = useState('');
-  const [loadingModels, setLoadingModels] = useState(false);
-  const [changingModel, setChangingModel] = useState(false);
+// Read the original file (backup)
+const original = readFileSync(
+  new URL('../src/components/TeacherDashboard.jsx.bak', import.meta.url),
+  'utf8'
+);
 
-  // Auto-scroll for students list
-  const studentsScrollRef = useRef(null);
-  const studentsHovered = useRef(false);
-  const studentsScrollDir = useRef(1);
+// Extract lines 1-139 (all the logic, hooks, handlers)
+const lines = original.split('\n');
+// Find the line index of "if (!connected)" - we keep everything before it
+const splitIdx = lines.findIndex(l => l.trim() === 'if (!connected) {');
+const logicLines = lines.slice(0, splitIdx);
 
-  useEffect(() => {
-    const speed = 0.2;
-    let rafId;
-    let accumulated = 0;
-    const step = () => {
-      const el = studentsScrollRef.current;
-      if (el && !studentsHovered.current) {
-        accumulated += speed;
-        const pixels = Math.floor(accumulated);
-        if (pixels >= 1) {
-          el.scrollTop += pixels * studentsScrollDir.current;
-          accumulated -= pixels;
-        }
-        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 2) studentsScrollDir.current = -1;
-        if (el.scrollTop <= 0) studentsScrollDir.current = 1;
-      }
-      rafId = requestAnimationFrame(step);
-    };
-    rafId = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(rafId);
-  }, []);
+// Inject showQR state after the changingModel state line
+const changingModelIdx = logicLines.findIndex(l => l.includes("const [changingModel, setChangingModel] = useState(false);"));
+logicLines.splice(changingModelIdx + 1, 0, "  const [showQR, setShowQR] = useState(false);");
 
-  // Helper to get API base URL dynamically (works across network)
-  const getApiBaseUrl = () => {
-    const isLocalAccess = window.location.hostname === 'localhost' || 
-                          window.location.hostname.match(/^\d+\.\d+\.\d+\.\d+$/);
-    return isLocalAccess 
-      ? `${window.location.protocol}//${window.location.hostname}:3001`
-      : `${window.location.protocol}//${window.location.host}`;
-  };
+const topSection = logicLines.join('\n');
 
-  // Debug log for starred pairs
-  useEffect(() => {
-    if (gameState?.starredQAPairs) {
-      console.log('[TEACHER] Starred pairs:', gameState.starredQAPairs.length, gameState.starredQAPairs);
-    }
-  }, [gameState?.starredQAPairs]);
-
-  // Fetch available models on mount
-  useEffect(() => {
-    const fetchModels = async () => {
-      setLoadingModels(true);
-      try {
-        console.log('[TEACHER] Fetching available models...');
-        const response = await fetch(`${getApiBaseUrl()}/api/models`);
-        console.log('[TEACHER] Models response status:', response.status);
-        
-        if (response.ok) {
-          const data = await response.json();
-          console.log('[TEACHER] Models data:', data);
-          setAvailableModels(data.availableModels || []);
-          setSelectedModel(data.currentModel || '');
-        } else {
-          console.error('[TEACHER] Failed to fetch models, status:', response.status);
-          const errorText = await response.text();
-          console.error('[TEACHER] Error response:', errorText);
-        }
-      } catch (error) {
-        console.error('[TEACHER] Failed to fetch models:', error);
-      } finally {
-        setLoadingModels(false);
-      }
-    };
-    fetchModels();
-  }, []);
-
-  // Update selected model when gameState changes
-  useEffect(() => {
-    if (gameState?.llmModel && gameState.llmModel !== selectedModel) {
-      setSelectedModel(gameState.llmModel);
-    }
-  }, [gameState?.llmModel]);
-
-  useEffect(() => {
-    // Only process new messages (index-based tracking avoids dedup issues)
-    if (messages.length <= lastProcessedIndex) return;
-    const newMessages = messages.slice(lastProcessedIndex);
-    const relevantMessages = newMessages.filter(msg =>
-      msg.type === 'training_data_added' || 
-      msg.type === 'llm_evolved' || 
-      msg.type === 'challenge_failed' ||
-      msg.type === 'challenge_success' ||
-      msg.type === 'llm_primed'
-    );
-    if (relevantMessages.length > 0) {
-      setActivityLog(prev => [...relevantMessages.reverse(), ...prev]);
-    }
-    setLastProcessedIndex(messages.length);
-  }, [messages, lastProcessedIndex]);
-
-  const startGame = () => {
-    sendMessage({ type: 'start_game' });
-  };
-
-  const endGame = () => {
-    sendMessage({ type: 'end_game' });
-  };
-
-  const resetKnowledge = () => {
-    setShowResetDialog(true);
-  };
-
-  const confirmReset = () => {
-    sendMessage({ type: 'reset_knowledge' });
-    setShowResetDialog(false);
-    // Clear the activity log when resetting
-    setActivityLog([]);
-    // Reset message index tracking
-    setLastProcessedIndex(messages.length);
-  };
-
-  const kickStudent = (clientId) => {
-    sendMessage({ type: 'kick_student', clientId });
-  };
-
-  const changeModel = async () => {
-    if (!selectedModel || changingModel) return;
-    
-    console.log('[TEACHER] Changing model to:', selectedModel);
-    setChangingModel(true);
-    try {
-      const response = await fetch(`${getApiBaseUrl()}/api/models/change`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ modelName: selectedModel })
-      });
-      
-      console.log('[TEACHER] Change model response status:', response.status);
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log('[TEACHER] Model changed successfully:', result);
-        // Model will update via WebSocket broadcast of gameState
-      } else {
-        const errorText = await response.text();
-        console.error('[TEACHER] Failed to change model, status:', response.status);
-        console.error('[TEACHER] Error response:', errorText);
-        alert('Failed to change model. Check console for details.');
-      }
-    } catch (error) {
-      console.error('[TEACHER] Error changing model:', error);
-      alert('Error changing model: ' + error.message);
-    } finally {
-      setChangingModel(false);
-    }
-  };
-
-
+// New JSX section
+const newJSX = `
   const students = gameState?.clients
     ? Object.values(gameState.clients).filter(c => c.role === 'student')
     : [];
@@ -206,13 +61,10 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
   );
 
   return (
-    <div style={{ width: '100vw', height: '100dvh', padding: '8px', margin: '0', display: 'flex', boxSizing: 'border-box', overflow: 'hidden', position: 'fixed', top: 0, left: 0, gap: '8px' }}>
+    <div style={{ width: '100vw', height: '100dvh', padding: '8px', margin: '0', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', overflow: 'hidden', position: 'fixed', top: 0, left: 0, gap: '8px' }}>
 
-      {/* ── Left column: header + AI Mind ── */}
-      <div style={{ flex: '2 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '8px', minHeight: 0 }}>
-
-        {/* ── Compact header bar ── */}
-        <div style={{ ...gc, padding: '10px 16px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '10px', borderRadius: '14px', position: 'relative' }}>
+      {/* ── Compact header bar ── */}
+      <div style={{ ...gc, padding: '10px 16px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '10px', borderRadius: '14px', position: 'relative' }}>
 
         {/* Branding */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}>
@@ -227,7 +79,7 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
           display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0,
           padding: '4px 10px', borderRadius: '20px',
           background: gameState?.isActive ? 'rgba(52,199,89,0.12)' : 'rgba(142,142,147,0.12)',
-          border: `1px solid ${gameState?.isActive ? 'rgba(52,199,89,0.35)' : 'rgba(142,142,147,0.3)'}`,
+          border: \`1px solid \${gameState?.isActive ? 'rgba(52,199,89,0.35)' : 'rgba(142,142,147,0.3)'}\`,
         }}>
           <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: gameState?.isActive ? '#34c759' : '#8e8e93', display: 'block', flexShrink: 0 }} className={gameState?.isActive ? 'pulse' : ''} />
           <span style={{ fontSize: '12px', fontWeight: '600', color: gameState?.isActive ? '#1a7a3a' : '#6e6e73', whiteSpace: 'nowrap' }}>
@@ -244,14 +96,14 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
         <div style={{ width: '1px', height: '24px', background: 'rgba(0,0,0,0.1)', flexShrink: 0 }} />
 
         {/* Model selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
           <span style={{ fontSize: '11px', fontWeight: '600', color: '#86868b', whiteSpace: 'nowrap', flexShrink: 0 }}>MODEL</span>
           <select
             value={selectedModel}
             onChange={e => setSelectedModel(e.target.value)}
             disabled={loadingModels || changingModel}
             style={{
-              width: '180px',
+              flex: 1, minWidth: 0,
               background: 'rgba(255,255,255,0.6)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
               color: '#1d1d1f', padding: '5px 10px', fontSize: '12px', fontWeight: '500',
               border: '1px solid rgba(255,255,255,0.7)', borderRadius: '8px',
@@ -279,29 +131,57 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
           >{changingModel ? '⏳' : '✓'}</button>
         </div>
 
-      </div>
+        <div style={{ width: '1px', height: '24px', background: 'rgba(0,0,0,0.1)', flexShrink: 0 }} />
 
-        {/* LLM Display */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
-          <LLMDisplay gameState={gameState} sendMessage={sendMessage} />
-          {/* QR code overlay */}
-          <div style={{
-            position: 'absolute', top: '12px', right: '12px', zIndex: 10,
-            background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.9)',
-            borderRadius: '10px', padding: '6px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)'
-          }}>
-            <QRCodeSVG value={window.location.origin} size={64} level="M" includeMargin={false} style={{ display: 'block', borderRadius: '4px' }} />
-          </div>
+        {/* Student count */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+          <span style={{ fontSize: '11px', fontWeight: '600', color: '#86868b', whiteSpace: 'nowrap' }}>STUDENTS</span>
+          <span style={{ padding: '2px 9px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', background: 'rgba(0,122,255,0.12)', color: '#0071e3', border: '1px solid rgba(0,122,255,0.2)' }}>
+            {students.length}
+          </span>
         </div>
 
-      </div>{/* end left column */}
+        {/* QR toggle */}
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <button
+            onClick={() => setShowQR(v => !v)}
+            title="Show QR code to join"
+            style={{
+              background: showQR ? 'rgba(0,122,255,0.15)' : 'rgba(255,255,255,0.4)',
+              border: \`1px solid \${showQR ? 'rgba(0,122,255,0.4)' : 'rgba(255,255,255,0.7)'}\`,
+              borderRadius: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '14px',
+              transition: 'all 0.2s', lineHeight: 1
+            }}
+          >⬛</button>
+          {showQR && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 10px)', right: 0, zIndex: 200,
+              ...gc, padding: '14px', borderRadius: '14px',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.2)'
+            }}>
+              <div style={{ fontSize: '11px', fontWeight: '700', color: '#86868b', marginBottom: '10px', textAlign: 'center', letterSpacing: '0.5px' }}>SCAN TO JOIN</div>
+              <QRCodeSVG value={window.location.origin} size={148} level="M" includeMargin={false} />
+              <div style={{ fontSize: '11px', color: '#86868b', marginTop: '8px', textAlign: 'center', maxWidth: '148px', wordBreak: 'break-all' }}>
+                {window.location.origin}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
-      {/* ── Right sidebar ── */}
-      <div style={{ flex: '0 0 272px', display: 'flex', flexDirection: 'column', gap: '8px', minHeight: 0 }}>
+      {/* ── Main content ── */}
+      <div style={{ display: 'flex', gap: '8px', flex: 1, minHeight: 0 }}>
+
+        {/* LLM Display — large centre pane */}
+        <div style={{ flex: '2 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          <LLMDisplay gameState={gameState} sendMessage={sendMessage} />
+        </div>
+
+        {/* Right sidebar */}
+        <div style={{ flex: '0 0 272px', display: 'flex', flexDirection: 'column', gap: '8px', minHeight: 0 }}>
 
           {/* Students card */}
-          <div style={{ ...gc, padding: '12px 14px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+          <div style={{ ...gc, padding: '12px 14px', display: 'flex', flexDirection: 'column', maxHeight: '44%', minHeight: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexShrink: 0 }}>
               <span style={{ fontSize: '11px', fontWeight: '700', color: '#86868b', letterSpacing: '0.5px' }}>STUDENTS ({students.length})</span>
               <div style={{ display: 'flex', gap: '3px' }}>
@@ -310,15 +190,7 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
                 ))}
               </div>
             </div>
-            <div
-              ref={studentsScrollRef}
-              onMouseEnter={() => { studentsHovered.current = true; }}
-              onMouseLeave={() => { studentsHovered.current = false; }}
-              style={{
-                overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '4px',
-                maskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)',
-                WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)'
-              }}>
+            <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {students.length > 0 ? students.map(client => {
                 const m = modeColor(client.currentMode);
                 return (
@@ -351,7 +223,7 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
           </div>
 
           {/* Activity log card */}
-          <div style={{ ...gc, padding: '12px 14px', display: 'flex', flexDirection: 'column', flex: 3, minHeight: 0 }}>
+          <div style={{ ...gc, padding: '12px 14px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             <div style={{ fontSize: '11px', fontWeight: '700', color: '#86868b', letterSpacing: '0.5px', marginBottom: '8px', flexShrink: 0 }}>ACTIVITY</div>
             <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '5px' }}>
 
@@ -401,6 +273,7 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
             </div>
           </div>
         </div>
+      </div>
 
       {/* Reset Confirmation Dialog */}
       <Dialog open={showResetDialog} onClose={() => setShowResetDialog(false)} style={{ position: 'fixed', zIndex: 9999 }}>
@@ -455,3 +328,12 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
 };
 
 export default TeacherDashboard;
+`;
+
+const newContent = topSection + '\n' + newJSX;
+writeFileSync(
+  new URL('../src/components/TeacherDashboard.jsx', import.meta.url),
+  newContent,
+  'utf8'
+);
+console.log('Written successfully, lines:', newContent.split('\n').length);

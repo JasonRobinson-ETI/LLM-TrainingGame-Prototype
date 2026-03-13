@@ -50,10 +50,11 @@ function censorText(input, options = {}) {
     // General profanity
     'ass', 'shit', 'fuck', 'bitch', 'dick', 'bastard', 'crap', 'hell', 'damn', 'prick', 'slut', 
     'cunt', 'whore', 'cock', 'pussy', 'hoe', 'titty', 'boob', 'asshole', 'asswipe', 'bullshit',
-    'nutjob', 'suck my',
+    'nutjob', 'suck my', 'dumbass',
     // Racial slurs - African/Black
     'nigger', 'nigga', 'niger', 'coon', 'jigaboo', 'pickaninny', 'sambo', 'spook', 'uncle tom',
-    'cotton picker', 'porch monkey', 'tar baby', 'higer', 'higger',
+    'cotton picker', 'porch monkey', 'tar baby', 'higer', 'higger', 'bdk', 'nig', 'igga', 'niqqa',
+    'grandwizard', 'willy wigger', 'niga', 'bdk', 'bell on bdk',
     // Racial slurs - Asian
     'chink', 'gook', 'nip', 'zipperhead', 'slope', 'squinty',
     // Racial slurs - Hispanic/Latino
@@ -66,11 +67,14 @@ function censorText(input, options = {}) {
     // Racial slurs - Native American
     'redskin', 'injun', 'prairie nigger',
     // Racial slurs - White
-    'cracker', 'honky', 'whitey', 'gringo', 'haole', 'powderskin',
+    'cracker', 'honky', 'whitey', 'gringo', 'haole', 'powderskin', 'saltin human',
     // Homophobic/transphobic slurs
-    'fag', 'faggot', 'dyke', 'tranny', 'shemale', 'femboy', 'femboi', 'twinknocker',
+    'fag', 'faggot', 'dyke', 'tranny', 'shemale', 
+    'femboy', 'femboi', 'twinknocker', 'transgender', 
+    'gay',
     // Ableist slurs
-    'retard', 'spaz', 'mongo', 'tard',
+    'retard', 'spaz', 'mongo', 'tard', 'noob',
+    "moron", "imbecile", "retarded",
     // Romani slurs
     'gypsy', 'gypo',
     // Irish slurs
@@ -81,11 +85,17 @@ function censorText(input, options = {}) {
     'polack',
     // Sexist Slurs
     'bimbo', 
+    // Alchaholism
+    'kirky', 'perky', 'buzzball', 'buzz ball',
+    // Bad People
+    'jeffery epstine', 'epstine', 'diddy', 'aldof hitler','hitler', 'stalin', 'dahmer', 'osama', 
     // Unique Slurs
     'deez nutz', 'deez nuts', 'deezy nutz', 'deezy nuts', 
-    '67', 'six seven', '6 seven', 'six 7', 'f them', 'nig', 'kill', 'willy wigger', 
-    'igga', 'niqqa', 'kys', 'niga', 'nosecandy', 'grandwizard', 'noob',
-    'boing', 'crotch', 'wap', 'god damn it',
+    '67', 'six seven', '6 seven', 'six 7', 
+    'f them', 'kill',  
+    'kys', 'nosecandy', 
+    'boing', 'crotch', 'wap', 'god damn it', 
+    'buzzball',
   ]).map(w => w.toLowerCase());
 
   const exceptions = (options.exceptions || [
@@ -93,7 +103,7 @@ function censorText(input, options = {}) {
     'hello', 'shell', 'bells', 'assess', 'assignment', 'assumption', 'bass', 'mass', 
     'pass', 'assistant', 'brass', 'class', 'hassle', 'lasso', 'massage', 'passable', 
     'sassy', 'tassel', 'casserole', 'embarrass', 'harass', 'jazz', 'razz', 'sass', 'vassal',
-    'skilled', 'gas station', 'class',
+    'skilled', 'gas station', 'shoes',
   ]).map(e => e.toLowerCase());
 
   const leetMap = options.leetMap || DEFAULT_LEET_MAP;

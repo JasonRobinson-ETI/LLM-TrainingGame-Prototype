@@ -349,8 +349,8 @@ const AttentionChallenge = ({ challenge, onComplete, onTimerStart }) => {
         steps={[
           {
             emoji: '🎯',
-            title: 'Teach the AI to focus!',
-            description: 'AI needs attention — it must learn which words in a sentence are connected to each other.',
+            title: 'LLM Self-Attention!',
+            description: 'Every LLM uses "attention" to figure out which words in a sentence relate to each other. This is the #1 thing that makes ChatGPT work!',
           },
           {
             emoji: '🟣',
@@ -371,8 +371,8 @@ const AttentionChallenge = ({ challenge, onComplete, onTimerStart }) => {
           },
           {
             emoji: '👆',
-            title: 'Tap the right word, then submit!',
-            description: 'Click the word it refers to and hit Submit. Get the majority of rounds correct to win!',
+            title: 'You ARE the attention layer!',
+            description: 'In a real LLM, this happens billions of times per second. Get the majority correct to keep the AI\'s attention working!',
           },
         ]}
       />
@@ -412,7 +412,7 @@ const AttentionChallenge = ({ challenge, onComplete, onTimerStart }) => {
         textTransform: 'uppercase',
         lineHeight: '1.2'
       }}>
-        🎯 Pick the related words
+        🎯 Self-Attention Layer
       </h3>
       
       <p style={{ 

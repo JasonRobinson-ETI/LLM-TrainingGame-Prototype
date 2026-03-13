@@ -4,6 +4,7 @@ const useWebSocket = () => {
   const [connected, setConnected] = useState(false);
   const [gameState, setGameState] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [wasKickedState, setWasKickedState] = useState(() => sessionStorage.getItem('wasKicked') === 'true'); // Expose kicked status as state
   const ws = useRef(null);
   const clientId = useRef(null);
   const reconnectTimeout = useRef(null);
@@ -154,6 +155,7 @@ const useWebSocket = () => {
         // Student was kicked - set flag and prevent reconnection
         console.log('[CLIENT] Kicked by teacher');
         wasKicked.current = true;
+        setWasKickedState(true);
         sessionStorage.setItem('wasKicked', 'true');
         setMessages((prev) => [...prev, data]);
         // Close connection gracefully
@@ -187,7 +189,8 @@ const useWebSocket = () => {
     gameState,
     messages,
     sendMessage,
-    clientId: clientId.current
+    clientId: clientId.current,
+    wasKicked: wasKickedState
   };
 };
 

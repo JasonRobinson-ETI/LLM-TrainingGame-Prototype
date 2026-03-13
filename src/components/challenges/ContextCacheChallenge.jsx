@@ -231,8 +231,8 @@ const ContextCacheChallenge = ({ challenge, onComplete, onTimerStart }) => {
         steps={[
           {
             emoji: '🧠',
-            title: 'The AI has only 8 memory slots!',
-            description: 'Dialogue keeps streaming in but you can only store 8 chunks. Choose what to keep wisely!',
+            title: 'LLM Context Window!',
+            description: 'LLMs can only "remember" a limited amount of text at once — this is called the context window. You decide what stays!',
           },
           {
             emoji: '💾',
@@ -253,8 +253,8 @@ const ContextCacheChallenge = ({ challenge, onComplete, onTimerStart }) => {
           },
           {
             emoji: '❓',
-            title: 'Answer questions about what you saved!',
-            description: 'After saving, you get quizzed on the stored content. Score 20+ points to win!',
+            title: 'Can the LLM recall what matters?',
+            description: 'Just like a real LLM, you\'ll be quizzed on stored context. This is why ChatGPT sometimes "forgets" things mid-conversation!',
           },
         ]}
       />
@@ -277,9 +277,9 @@ const ContextCacheChallenge = ({ challenge, onComplete, onTimerStart }) => {
         textAlign: 'center',
         border: '1px solid rgba(255, 255, 255, 0.1)'
       }}>
-        <h3 style={{ margin: '0 0 8px 0', fontSize: 'clamp(1rem, 3vw, 1.3rem)' }}>🧠 Context Cache</h3>
+        <h3 style={{ margin: '0 0 8px 0', fontSize: 'clamp(1rem, 3vw, 1.3rem)' }}>🧠 LLM Context Window</h3>
         <p style={{ margin: 0, fontSize: 'clamp(0.8rem, 2vw, 0.95rem)', color: '#94a3b8' }}>
-          Manage the LLM's memory! Keep important context, discard filler.
+          Manage what the LLM remembers! Real LLMs have limited context — keep the important stuff.
         </p>
       </div>
 

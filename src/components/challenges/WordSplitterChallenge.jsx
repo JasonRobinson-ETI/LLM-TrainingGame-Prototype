@@ -327,8 +327,8 @@ const WordSplitterChallenge = ({ challenge, onComplete, onTimerStart }) => {
         steps={[
           {
             emoji: '✂️',
-            title: 'Teach the AI how to read words!',
-            description: 'AI breaks words into tiny pieces called tokens. Your job: find the best split points!',
+            title: 'LLM Tokenization!',
+            description: 'LLMs can\'t read words directly — they split text into "tokens" first. This is called tokenization, and every LLM needs it!',
           },
           {
             emoji: '👆',
@@ -349,8 +349,8 @@ const WordSplitterChallenge = ({ challenge, onComplete, onTimerStart }) => {
           },
           {
             emoji: '🏆',
-            title: 'Reuse common pieces to score high!',
-            description: 'Pieces like \'un-\', \'-ing\', \'-tion\' appear in many words. Average efficiency above 50% to win!',
+            title: 'Build the LLM\'s vocabulary!',
+            description: 'Real LLMs use BPE (Byte-Pair Encoding) to find common pieces like \'un-\', \'-ing\'. Average efficiency above 50% to pass!',
           },
         ]}
       />
@@ -382,7 +382,7 @@ const WordSplitterChallenge = ({ challenge, onComplete, onTimerStart }) => {
           marginBottom: 'clamp(12px, 2vw, 16px)',
           border: '1px solid rgba(255, 255, 255, 0.1)'
         }}>
-          <h2 style={{ margin: '0 0 6px 0', fontSize: 'clamp(1rem, 3vw, 1.3rem)' }}>🔡 Model Efficiency Report</h2>
+          <h2 style={{ margin: '0 0 6px 0', fontSize: 'clamp(1rem, 3vw, 1.3rem)' }}>🔡 LLM Tokenizer Report</h2>
           <p style={{ margin: 0, color: '#94a3b8', fontSize: 'clamp(0.75rem, 2vw, 0.9rem)' }}>Tokenization Complete!</p>
         </div>
 
@@ -466,9 +466,9 @@ const WordSplitterChallenge = ({ challenge, onComplete, onTimerStart }) => {
         textAlign: 'center',
         border: '1px solid rgba(255, 255, 255, 0.1)'
       }}>
-        <h3 style={{ margin: '0 0 6px 0', fontSize: 'clamp(0.95rem, 3vw, 1.15rem)' }}>🔡 Word Splitter</h3>
+        <h3 style={{ margin: '0 0 6px 0', fontSize: 'clamp(0.95rem, 3vw, 1.15rem)' }}>🔡 LLM Tokenizer</h3>
         <p style={{ margin: 0, fontSize: 'clamp(0.75rem, 2vw, 0.85rem)', color: '#94a3b8' }}>
-          Tokenize the stream — smaller vocab = faster model!
+          Build the LLM\'s vocabulary — smaller vocab = faster, smarter model!
         </p>
       </div>
 

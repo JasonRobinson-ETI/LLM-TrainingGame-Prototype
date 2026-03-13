@@ -174,8 +174,8 @@ const HallucinationHunterChallenge = ({ challenge, onComplete, onTimerStart }) =
         steps={[
           {
             emoji: '🔍',
-            title: 'The AI is making stuff up!',
-            description: 'AI hallucinations are fake \u201cfacts\u201d that sound real but are completely wrong. Don\u2019t let them spread!',
+            title: 'LLM Hallucination Check!',
+            description: 'LLMs sometimes generate fake "facts" that sound real — this is called hallucination. It\'s one of the biggest problems in AI!',
           },
           {
             emoji: '👆',
@@ -197,8 +197,8 @@ const HallucinationHunterChallenge = ({ challenge, onComplete, onTimerStart }) =
           },
           {
             emoji: '🏹',
-            title: 'Catch as many hallucinations as you can!',
-            description: '30 seconds of rapid fact-checking. Score higher than random chance and you win!',
+            title: 'You\'re an LLM fact-checker!',
+            description: 'Companies hire humans to catch LLM hallucinations. 30 seconds of rapid fact-checking — beat random chance to pass!',
           },
         ]}
       />
@@ -264,7 +264,7 @@ const HallucinationHunterChallenge = ({ challenge, onComplete, onTimerStart }) =
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
             ⏰ <span style={{ color: timeLeft <= 5 ? '#ef4444' : '#10b981' }}>{timeLeft}s</span>
           </div>
-          <div style={{ fontSize: 'clamp(0.9rem, 2.8vw, 1.2rem)', whiteSpace: 'nowrap' }}>🔍 Hunter</div>
+          <div style={{ fontSize: 'clamp(0.9rem, 2.8vw, 1.2rem)', whiteSpace: 'nowrap' }}>🔍 LLM Hallucination Check</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
             🎯 <span style={{ color: '#10b981' }}>{hallucinationsCaught}</span>
             {hallucinationsMissed > 0 && <span style={{ color: '#ef4444' }}>/{hallucinationsMissed}</span>}

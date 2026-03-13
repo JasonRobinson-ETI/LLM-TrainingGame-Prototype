@@ -38,7 +38,7 @@ const LLMDisplay = ({ gameState, sendMessage }) => {
   const animationDuration = Math.max(15, itemCount * 5); // Minimum 15s, scales with items
   
   return (
-    <div className="card" style={{ 
+    <div className="card no-lift" style={{ 
       padding: '20px',
       flex: 1,
       minHeight: 0,
