@@ -1,228 +1,167 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ChallengeIntro from './ChallengeIntro';
 
+// Pool of clean sentences related to AI / LLM topics (longer sentences = more scanning)
+const SENTENCE_POOL = [
+  'Language models learn patterns from very large text datasets collected from the internet',
+  'Training data quality directly determines how well an artificial intelligence system performs',
+  'Neural networks carefully adjust their internal weights during the learning and training process',
+  'Tokenization breaks raw text into smaller pieces so the model can process them efficiently',
+  'The attention mechanism helps the model focus on the most relevant words in a sentence',
+  'Clean and accurate data is absolutely essential for reliable model predictions and outputs',
+  'Transformer models can process all the words in a sentence at the same time in parallel',
+  'Bias hidden in training data can lead to unfair and discriminatory outputs from the model',
+  'Fine tuning takes a general pretrained model and adapts it to work on specific tasks',
+  'Word embeddings represent each word as a dense vector of numbers in high dimensional space',
+  'The language model generates its output text one single token at a time from left to right',
+  'Reinforcement learning from human feedback helps align the model with what people actually want',
+  'The context window sets a hard limit on how much text the model can remember at once',
+  'Data preprocessing carefully removes formatting errors and duplicates before training can begin',
+  'Overfitting is a problem that happens when a model simply memorizes its training data',
+  'Prompt engineering is the practice of crafting inputs that guide the model to better answers',
+  'Gradient descent is the algorithm that optimizes the model parameters step by step over time',
+  'Larger models with more parameters can capture increasingly complex patterns in natural language',
+  'Researchers use validation sets to check whether the model generalizes beyond its training examples',
+  'Safety filters screen model outputs to prevent harmful or misleading content from reaching users',
+];
+
+// Noise tokens that look obviously wrong / corrupted
+const NOISE_TOKENS = [
+  '###', '@@@', '$$$', '%%%', '***', '&&&', '!!!',
+  '▓▓▓', '░░░', '█▒█', '◈◈◈', '⊗⊗⊗',
+  'xJ7q', 'p0#k', 'zZ!f', 'q$9m', 'r%%w',
+  '0x3F', 'NaN', 'NULL', '\\err', '<brk>',
+  '🔴ERR', '⚠BUG', '💀BAD',
+];
+
+/**
+ * Injects noise tokens into a sentence.
+ * Returns an array of { text, isNoise, removed } objects.
+ */
+function corruptSentence(sentence) {
+  const words = sentence.split(' ');
+  const tokens = words.map(w => ({ text: w, isNoise: false, removed: false }));
+
+  // Insert 5-8 noise tokens at random positions
+  const noiseCount = 5 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < noiseCount; i++) {
+    const noise = NOISE_TOKENS[Math.floor(Math.random() * NOISE_TOKENS.length)];
+    const pos = Math.floor(Math.random() * (tokens.length + 1));
+    tokens.splice(pos, 0, { text: noise, isNoise: true, removed: false });
+  }
+  return tokens;
+}
+
+const TOTAL_ROUNDS = 5;
+const REQUIRED_CLEAN = 4; // must clean at least 4 out of 5
+const MAX_MISTAKES_PER_ROUND = 3;
+const TAP_COOLDOWN_MS = 400; // prevent spam-tapping
+
 const DenoiseChallenge = ({ challenge, onComplete, onTimerStart }) => {
-  const [phase, setPhase] = useState('intro'); // 'intro', 'active', 'complete'
-  const [frequency, setFrequency] = useState(0.5);
-  const [amplitude, setAmplitude] = useState(0.5);
-  const [signalQuality, setSignalQuality] = useState(0);
-  const [particles, setParticles] = useState([]);
-  const animationRef = useRef(null);
-  const canvasRef = useRef(null);
+  const [phase, setPhase] = useState('intro'); // 'intro' | 'active' | 'complete'
+  const [roundIndex, setRoundIndex] = useState(0);
+  const [sentences, setSentences] = useState([]);
+  const [currentTokens, setCurrentTokens] = useState([]);
+  const [mistakes, setMistakes] = useState(0);
+  const [roundsClean, setRoundsClean] = useState(0);
+  const [roundFailed, setRoundFailed] = useState(false);
+  const [feedback, setFeedback] = useState(null); // { tokenIdx, type: 'correct'|'wrong' }
+  const [showRoundResult, setShowRoundResult] = useState(null); // 'clean' | 'too-many-errors' | null
+  const [tapCooldown, setTapCooldown] = useState(false);
+  const feedbackTimeout = useRef(null);
+  const cooldownTimeout = useRef(null);
+  const roundAdvanced = useRef(false); // guard against double-advancing
 
-  // Generate signal parameters internally
-  const [targetSignal] = useState(() => ({
-    signalStrength: Math.random(),
-    targetFrequency: Math.random(),
-    tolerance: 0.1
-  }));
-
-  // Inject responsive CSS
+  // Pick random sentences on mount
   useEffect(() => {
-    const styleId = 'denoise-challenge-responsive-styles';
-    if (!document.getElementById(styleId)) {
-      const style = document.createElement('style');
-      style.id = styleId;
-      style.textContent = `
-        /* Ensure range sliders are touch-friendly on all devices */
-        .denoise-slider {
-          -webkit-appearance: none;
-          appearance: none;
-          background: #ddd;
-          outline: none;
-          transition: all 0.2s;
-          touch-action: none;
-          cursor: pointer;
-          border-radius: 6px;
-          box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
-        }
-        
-        .denoise-slider:hover {
-          background: #ccc;
-        }
-        
-        .denoise-slider::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          appearance: none;
-          width: 28px;
-          height: 28px;
-          background: #fff;
-          cursor: pointer;
-          border-radius: 50%;
-          box-shadow: 0 3px 12px rgba(0,0,0,0.3);
-          border: 2px solid #999;
-          transition: all 0.2s ease;
-        }
-        
-        .denoise-slider::-webkit-slider-thumb:hover {
-          transform: scale(1.1);
-          box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-          border-color: #666;
-        }
-        
-        .denoise-slider::-webkit-slider-thumb:active {
-          transform: scale(1.05);
-          border-color: #333;
-        }
-        
-        .denoise-slider::-moz-range-thumb {
-          width: 28px;
-          height: 28px;
-          background: #fff;
-          cursor: pointer;
-          border-radius: 50%;
-          box-shadow: 0 3px 12px rgba(0,0,0,0.3);
-          border: 2px solid #999;
-          transition: all 0.2s ease;
-        }
-        
-        .denoise-slider::-moz-range-thumb:hover {
-          transform: scale(1.1);
-          box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-          border-color: #666;
-        }
-        
-        .denoise-slider::-moz-range-thumb:active {
-          transform: scale(1.05);
-          border-color: #333;
-        }
-        
-        .denoise-slider::-webkit-slider-runnable-track {
-          height: 10px;
-          border-radius: 5px;
-        }
-        
-        .denoise-slider::-moz-range-track {
-          height: 10px;
-          border-radius: 5px;
-        }
-        
-        .denoise-button {
-          -webkit-tap-highlight-color: transparent;
-          touch-action: manipulation;
-          min-height: 48px; /* Minimum touch target */
-        }
-        
-        /* Extra small devices (phones in portrait) */
-        @media (max-width: 400px) {
-          .denoise-container {
-            font-size: 14px;
-          }
-          .denoise-title {
-            font-size: 1.2rem !important;
-            margin-bottom: 6px !important;
-          }
-          .denoise-description {
-            font-size: 0.8rem !important;
-            margin-bottom: 12px !important;
-          }
-          .denoise-visualization {
-            height: 140px !important;
-            margin-bottom: 12px !important;
-          }
-          .denoise-slider {
-            min-height: 48px;
-            padding: 20px 0;
-            margin: -20px 0;
-          }
-        }
-        
-        /* Small landscape devices (phones in landscape, small tablets) */
-        @media (max-width: 850px) and (max-height: 520px) {
-          .denoise-visualization {
-            height: 120px !important;
-          }
-          .denoise-title {
-            font-size: 1.1rem !important;
-            margin-bottom: 4px !important;
-          }
-          .denoise-description {
-            font-size: 0.75rem !important;
-            margin-bottom: 8px !important;
-          }
-        }
-        
-        /* Touch device optimizations */
-        @media (hover: none) and (pointer: coarse) {
-          .denoise-slider {
-            min-height: 48px;
-          }
-          .denoise-button {
-            min-height: 52px;
-          }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-    return () => {
-      const style = document.getElementById(styleId);
-      if (style) style.remove();
-    };
+    const shuffled = [...SENTENCE_POOL].sort(() => Math.random() - 0.5);
+    const picked = shuffled.slice(0, TOTAL_ROUNDS);
+    setSentences(picked);
   }, []);
 
-  // Calculate signal quality
+  // Build tokens for current round
   useEffect(() => {
-    const freqDiff = Math.abs(frequency - targetSignal.targetFrequency);
-    const ampDiff = Math.abs(amplitude - targetSignal.signalStrength);
-    const quality = Math.max(0, 1 - (freqDiff + ampDiff) / 2);
-    setSignalQuality(quality);
-  }, [frequency, amplitude, targetSignal]);
+    if (sentences.length === 0 || phase !== 'active') return;
+    if (roundIndex >= TOTAL_ROUNDS) return;
+    setCurrentTokens(corruptSentence(sentences[roundIndex]));
+    setMistakes(0);
+    setRoundFailed(false);
+    setShowRoundResult(null);
+    roundAdvanced.current = false;
+  }, [roundIndex, sentences, phase]);
 
-  // Animated particle background
-  useEffect(() => {
-    if (phase !== 'active') return;
-    
-    const particleCount = 30;
-    const newParticles = Array.from({ length: particleCount }).map(() => ({
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      vx: (Math.random() - 0.5) * 0.5,
-      vy: (Math.random() - 0.5) * 0.5,
-      size: Math.random() * 2 + 1
-    }));
-    setParticles(newParticles);
+  const noiseRemaining = currentTokens.filter(t => t.isNoise && !t.removed).length;
 
-    const animate = () => {
-      setParticles(prev => prev.map(p => ({
-        ...p,
-        x: (p.x + p.vx + 100) % 100,
-        y: (p.y + p.vy + 100) % 100
-      })));
-      animationRef.current = requestAnimationFrame(animate);
-    };
+  const advanceRound = useCallback((wasClean) => {
+    // Prevent double-fire from effect re-runs
+    if (roundAdvanced.current) return;
+    roundAdvanced.current = true;
 
-    animationRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    };
-  }, [phase]);
+    setRoundsClean(prev => {
+      const newRoundsClean = wasClean ? prev + 1 : prev;
 
-  const handleLock = () => {
-    const success = signalQuality > 0.8;
-    console.log('Denoise answer:', { 
-      frequency, 
-      targetFrequency: targetSignal.targetFrequency, 
-      amplitude, 
-      targetAmplitude: targetSignal.signalStrength, 
-      signalQuality, 
-      success 
+      setRoundIndex(prevRound => {
+        if (prevRound + 1 >= TOTAL_ROUNDS) {
+          // Game over
+          const success = newRoundsClean >= REQUIRED_CLEAN;
+          setPhase('complete');
+          setTimeout(() => onComplete(success), 600);
+        } else {
+          setShowRoundResult(wasClean ? 'clean' : 'too-many-errors');
+          setTimeout(() => {
+            setRoundIndex(r => r + 1);
+          }, 1200);
+        }
+        return prevRound; // don't change yet — the setTimeout above does it
+      });
+
+      return newRoundsClean;
     });
-    onComplete(success);
+  }, [onComplete]);
+
+  // Check if all noise removed
+  useEffect(() => {
+    if (phase !== 'active' || currentTokens.length === 0) return;
+    if (noiseRemaining === 0 && currentTokens.some(t => t.isNoise)) {
+      // All noise removed — round clean!
+      advanceRound(true);
+    }
+  }, [noiseRemaining, currentTokens, phase, advanceRound]);
+
+  const handleTokenTap = (idx) => {
+    if (phase !== 'active' || roundFailed || showRoundResult || tapCooldown) return;
+    const token = currentTokens[idx];
+    if (!token || token.removed) return;
+
+    // Start cooldown
+    setTapCooldown(true);
+    if (cooldownTimeout.current) clearTimeout(cooldownTimeout.current);
+    cooldownTimeout.current = setTimeout(() => setTapCooldown(false), TAP_COOLDOWN_MS);
+
+    if (feedbackTimeout.current) clearTimeout(feedbackTimeout.current);
+
+    if (token.isNoise) {
+      // Correct — remove noise
+      setCurrentTokens(prev =>
+        prev.map((t, i) => (i === idx ? { ...t, removed: true } : t))
+      );
+      setFeedback({ tokenIdx: idx, type: 'correct' });
+    } else {
+      // Mistake — tapped a clean word
+      const newMistakes = mistakes + 1;
+      setMistakes(newMistakes);
+      setFeedback({ tokenIdx: idx, type: 'wrong' });
+
+      if (newMistakes >= MAX_MISTAKES_PER_ROUND) {
+        setRoundFailed(true);
+        setTimeout(() => advanceRound(false), 1000);
+      }
+    }
+
+    feedbackTimeout.current = setTimeout(() => setFeedback(null), 500);
   };
 
-  const getStatusColor = () => {
-    if (signalQuality > 0.8) return '#38ef7d';
-    if (signalQuality > 0.5) return '#ffc107';
-    return '#ee0979';
-  };
-
-  const getStatusText = () => {
-    if (signalQuality > 0.8) return '✓ SIGNAL LOCKED';
-    if (signalQuality > 0.6) return '⚡ ALMOST THERE...';
-    if (signalQuality > 0.4) return '⚠ TUNING...';
-    return '✗ SIGNAL WEAK';
-  };
-
+  // ===== Intro =====
   if (phase === 'intro') {
     return (
       <ChallengeIntro
@@ -230,32 +169,47 @@ const DenoiseChallenge = ({ challenge, onComplete, onTimerStart }) => {
         onTimerStart={onTimerStart}
         steps={[
           {
-            emoji: '📡',
-            title: 'LLM Training Data is Noisy!',
-            description: 'Before an LLM can learn, its training data must be cleaned. Noise = garbage in, garbage out!',
+            emoji: '🧹',
+            title: 'Training Data is Messy!',
+            description:
+              'Before an LLM learns, humans clean its training data — removing corrupted text, broken symbols, and garbage characters.',
           },
           {
-            emoji: '🎚️',
-            title: 'Drag BOTH sliders to tune',
-            description: 'Move the Frequency and Amplitude sliders to find the sweet spot that clears the noise.',
+            emoji: '👆',
+            title: 'Tap the Noise Tokens',
+            description:
+              'You\'ll see a sentence with noisy junk tokens mixed in. Tap ONLY the noise to remove it — don\'t tap real words!',
             demo: (
-              <div style={{ maxWidth: '260px', margin: '0 auto' }}>
-                {[['Frequency', '60%'], ['Amplitude', '35%']].map(([label, pos]) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-                    <span style={{ color: '#94a3b8', fontSize: '0.8rem', width: '82px', textAlign: 'left' }}>{label}</span>
-                    <div style={{ flex: 1, height: '8px', background: 'rgba(255,255,255,0.15)', borderRadius: '4px', position: 'relative' }}>
-                      <div style={{ position: 'absolute', left: pos, top: '50%', transform: 'translate(-50%,-50%)', width: '22px', height: '22px', background: 'white', borderRadius: '50%', boxShadow: '0 2px 10px rgba(0,0,0,0.5)' }} />
-                    </div>
-                  </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center', maxWidth: '320px', margin: '0 auto' }}>
+                {['Language', '###', 'models', '@@@', 'learn'].map((t, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '8px',
+                      fontSize: '0.95rem',
+                      fontWeight: 600,
+                      background: ['###', '@@@'].includes(t)
+                        ? 'rgba(239, 68, 68, 0.25)'
+                        : 'rgba(255,255,255,0.1)',
+                      color: ['###', '@@@'].includes(t) ? '#f87171' : '#e2e8f0',
+                      border: ['###', '@@@'].includes(t)
+                        ? '2px solid rgba(239, 68, 68, 0.5)'
+                        : '1px solid rgba(255,255,255,0.2)',
+                      textDecoration: ['###', '@@@'].includes(t) ? 'line-through' : 'none',
+                    }}
+                  >
+                    {t}
+                  </span>
                 ))}
-                <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: '0.8rem' }}>Keep adjusting until the quality bar turns green</div>
               </div>
             ),
           },
           {
-            emoji: '📊',
-            title: 'Clean the data for the LLM!',
-            description: 'Real AI teams spend months cleaning data. Hold quality at 80%+ for 2 seconds to pass — the LLM needs clean input!',
+            emoji: '🎯',
+            title: 'Clean 3 of 4 Sentences',
+            description:
+              `Remove all noise from each sentence. You get up to ${MAX_MISTAKES_PER_ROUND} mistakes per sentence — more than that and it fails. Clean at least ${REQUIRED_CLEAN} out of ${TOTAL_ROUNDS} to pass!`,
           },
         ]}
       />
@@ -263,341 +217,372 @@ const DenoiseChallenge = ({ challenge, onComplete, onTimerStart }) => {
   }
 
   return (
-    <div className="denoise-container" style={{ 
-      userSelect: 'none', 
-      maxWidth: '100%', 
-      overflow: 'hidden', 
-      padding: 'clamp(10px, 2vw, 20px)',
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
-    }}>
-      {/* Animated title */}
-      <h3 className="denoise-title" style={{ 
-        marginBottom: '8px', 
-        color: 'white',
-        fontSize: 'clamp(1.1rem, 4vw, 1.8rem)',
-        fontWeight: '700',
-        textAlign: 'center',
-        letterSpacing: 'clamp(0.5px, 0.2vw, 1px)',
-        textTransform: 'uppercase',
-        wordBreak: 'break-word',
-        lineHeight: '1.2'
-      }}>
-        � LLM Data Cleaning
+    <div
+      style={{
+        userSelect: 'none',
+        maxWidth: '100%',
+        overflow: 'hidden',
+        padding: 'clamp(12px, 3vw, 24px)',
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+      }}
+    >
+      {/* Title */}
+      <h3
+        style={{
+          marginBottom: '4px',
+          color: 'white',
+          fontSize: 'clamp(1.1rem, 4vw, 1.6rem)',
+          fontWeight: 700,
+          textAlign: 'center',
+          letterSpacing: '0.5px',
+          textTransform: 'uppercase',
+          lineHeight: 1.2,
+        }}
+      >
+        🧹 Data Cleaning
       </h3>
-      
-      <p className="denoise-description" style={{ 
-        marginBottom: '12px', 
-        color: '#94a3b8',
-        textAlign: 'center',
-        fontSize: 'clamp(0.75rem, 2vw, 0.95rem)',
-        fontWeight: '500',
-        padding: '0 8px',
-        lineHeight: '1.3'
-      }}>
-        Clean the training data so the LLM can learn properly!
+      <p
+        style={{
+          marginBottom: '14px',
+          color: '#94a3b8',
+          textAlign: 'center',
+          fontSize: 'clamp(0.75rem, 2vw, 0.9rem)',
+          fontWeight: 500,
+          lineHeight: 1.3,
+        }}
+      >
+        Tap the noise tokens to clean the training data!
       </p>
 
-      {/* Enhanced signal visualization with particle background */}
-      <div className="denoise-visualization" style={{
-        background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)',
-        height: 'clamp(140px, 25vh, 200px)',
-        maxHeight: '200px',
-        borderRadius: 'clamp(8px, 2vw, 12px)',
-        marginBottom: '12px',
-        position: 'relative',
-        overflow: 'hidden',
-        border: `clamp(2px, 0.5vw, 3px) solid ${getStatusColor()}`,
-        boxShadow: `0 4px 16px rgba(0,0,0,0.3), inset 0 0 20px ${getStatusColor()}22`,
-        transition: 'all 0.3s ease',
-        width: '100%'
-      }}>
-        {/* Animated particle background */}
-        <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }}>
-          {particles.map((p, i) => (
-            <circle
+      {/* Progress bar — rounds */}
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '480px',
+          marginBottom: '14px',
+          display: 'flex',
+          gap: '6px',
+          alignItems: 'center',
+        }}
+      >
+        {Array.from({ length: TOTAL_ROUNDS }).map((_, i) => {
+          let bg = 'rgba(255,255,255,0.1)';
+          let border = '1px solid rgba(255,255,255,0.15)';
+          if (i < roundIndex || (i === roundIndex && showRoundResult)) {
+            if (i < roundsClean || (i === roundIndex && showRoundResult === 'clean')) {
+              bg = 'rgba(56, 239, 125, 0.35)';
+              border = '1px solid #38ef7d';
+            } else {
+              bg = 'rgba(239, 68, 68, 0.3)';
+              border = '1px solid #ef4444';
+            }
+          } else if (i === roundIndex) {
+            bg = 'rgba(96, 165, 250, 0.3)';
+            border = '2px solid #60a5fa';
+          }
+          return (
+            <div
               key={i}
-              cx={`${p.x}%`}
-              cy={`${p.y}%`}
-              r={p.size}
-              fill={getStatusColor()}
-              opacity={0.3}
+              style={{
+                flex: 1,
+                height: '8px',
+                borderRadius: '4px',
+                background: bg,
+                border,
+                transition: 'all 0.3s ease',
+              }}
             />
-          ))}
-        </svg>
+          );
+        })}
+        <span
+          style={{
+            color: '#94a3b8',
+            fontSize: 'clamp(0.7rem, 1.8vw, 0.8rem)',
+            fontWeight: 600,
+            whiteSpace: 'nowrap',
+            marginLeft: '4px',
+          }}
+        >
+          {roundIndex + 1}/{TOTAL_ROUNDS}
+        </span>
+      </div>
 
-        {/* Signal waveform */}
-        <svg width="100%" height="100%" viewBox="0 0 500 200" preserveAspectRatio="none" style={{ position: 'absolute', top: 0, left: 0 }}>
-          {/* Grid lines */}
-          {Array.from({ length: 10 }).map((_, i) => (
-            <line
-              key={`grid-${i}`}
-              x1="0"
-              x2="500"
-              y1={(i / 10) * 200}
-              y2={(i / 10) * 200}
-              stroke={getStatusColor()}
-              strokeOpacity="0.1"
-              strokeWidth="1"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-          
-          {/* Signal path */}
-          <path
-            d={Array.from({ length: 100 }).map((_, i) => {
-              const x = (i / 100) * 500;
-              const noise = (1 - signalQuality) * (Math.sin(i * 0.5) * 30);
-              const signal = Math.sin((i / 100) * Math.PI * 8 * frequency) * amplitude * 70;
-              const y = 100 + signal + noise;
-              return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-            }).join(' ')}
-            stroke={getStatusColor()}
-            strokeWidth="3"
-            fill="none"
-            strokeLinecap="round"
-            filter="drop-shadow(0 0 8px currentColor)"
-            vectorEffect="non-scaling-stroke"
-            style={{ 
-              transition: 'stroke 0.3s ease',
-              opacity: 0.9
+      {/* Mistakes indicator */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '6px',
+          marginBottom: '14px',
+          alignItems: 'center',
+        }}
+      >
+        <span style={{ color: '#94a3b8', fontSize: 'clamp(0.7rem, 1.8vw, 0.8rem)' }}>
+          Mistakes:
+        </span>
+        {Array.from({ length: MAX_MISTAKES_PER_ROUND }).map((_, i) => (
+          <span
+            key={i}
+            style={{
+              width: '14px',
+              height: '14px',
+              borderRadius: '50%',
+              background: i < mistakes ? '#ef4444' : 'rgba(255,255,255,0.15)',
+              border: i < mistakes ? '1px solid #f87171' : '1px solid rgba(255,255,255,0.2)',
+              transition: 'all 0.25s ease',
+              boxShadow: i < mistakes ? '0 0 8px rgba(239,68,68,0.5)' : 'none',
             }}
           />
+        ))}
+        <span
+          style={{
+            color: '#94a3b8',
+            fontSize: 'clamp(0.65rem, 1.5vw, 0.75rem)',
+            marginLeft: '4px',
+          }}
+        >
+          ({noiseRemaining} noise left)
+        </span>
+      </div>
 
-          {/* Signal dots */}
-          {Array.from({ length: 50 }).map((_, i) => {
-            const x = (i / 50) * 500;
-            const noise = (1 - signalQuality) * (Math.sin(i * 0.3) * 30);
-            const signal = Math.sin((i / 50) * Math.PI * 8 * frequency) * amplitude * 70;
-            const y = 100 + signal + noise;
+      {/* Round result overlay */}
+      {showRoundResult && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 1000,
+            animation: 'denoise-fade-in 0.3s ease',
+          }}
+        >
+          <div
+            style={{
+              padding: '24px 40px',
+              borderRadius: '16px',
+              background:
+                showRoundResult === 'clean'
+                  ? 'linear-gradient(135deg, #065f46, #047857)'
+                  : 'linear-gradient(135deg, #7f1d1d, #991b1b)',
+              color: 'white',
+              fontSize: 'clamp(1.2rem, 4vw, 1.6rem)',
+              fontWeight: 700,
+              textAlign: 'center',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+            }}
+          >
+            {showRoundResult === 'clean' ? '✅ Sentence Cleaned!' : '❌ Too Many Mistakes!'}
+          </div>
+        </div>
+      )}
+
+      {/* Token grid */}
+      <div
+        style={{
+          width: '100%',
+          maxWidth: '520px',
+          background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)',
+          borderRadius: 'clamp(10px, 2vw, 16px)',
+          padding: 'clamp(14px, 3vw, 24px)',
+          border: '2px solid rgba(99, 102, 241, 0.3)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3), inset 0 0 30px rgba(99,102,241,0.05)',
+          minHeight: '180px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 'clamp(6px, 1.5vw, 10px)',
+          alignContent: 'flex-start',
+          justifyContent: 'center',
+          position: 'relative',
+        }}
+      >
+        {/* Scanline effect */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: 'inherit',
+            background:
+              'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(255,255,255,0.015) 3px, rgba(255,255,255,0.015) 4px)',
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        />
+
+        {currentTokens.map((token, idx) => {
+          if (token.removed) {
+            // Show a small gap where noise was
             return (
-              <circle
-                key={i}
-                cx={x}
-                cy={y}
-                r={signalQuality > 0.8 ? "4" : "3"}
-                fill={getStatusColor()}
-                opacity={signalQuality > 0.8 ? 1 : 0.7}
-                vectorEffect="non-scaling-stroke"
-                style={{ 
-                  filter: signalQuality > 0.8 ? `drop-shadow(0 0 4px ${getStatusColor()})` : 'none',
-                  transition: 'all 0.3s ease'
+              <span
+                key={idx}
+                style={{
+                  display: 'inline-block',
+                  width: '6px',
+                  height: '36px',
+                  opacity: 0.3,
+                  transition: 'all 0.3s ease',
                 }}
               />
             );
-          })}
-        </svg>
-        
-        {/* Status badge */}
-        <div style={{
-          position: 'absolute',
-          top: 'clamp(4px, 1vw, 8px)',
-          right: 'clamp(4px, 1vw, 8px)',
-          background: 'rgba(0, 0, 0, 0.8)',
-          backdropFilter: 'blur(10px)',
-          padding: 'clamp(4px, 1.5vw, 8px) clamp(8px, 2vw, 12px)',
-          borderRadius: 'clamp(4px, 1vw, 8px)',
-          fontWeight: 'bold',
-          fontSize: 'clamp(0.65rem, 1.8vw, 0.85rem)',
-          color: getStatusColor(),
-          border: `2px solid ${getStatusColor()}`,
-          boxShadow: `0 2px 8px ${getStatusColor()}44`,
-          transition: 'all 0.3s ease',
-          whiteSpace: 'nowrap',
-          maxWidth: 'calc(100% - 16px)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis'
-        }}>
-          {getStatusText()}
-        </div>
+          }
 
-        {/* Quality meter */}
-        <div style={{
-          position: 'absolute',
-          bottom: 'clamp(4px, 1vw, 8px)',
-          left: 'clamp(4px, 1vw, 8px)',
-          right: 'clamp(4px, 1vw, 8px)',
-          background: 'rgba(0, 0, 0, 0.6)',
-          borderRadius: 'clamp(4px, 1vw, 8px)',
-          padding: 'clamp(4px, 1vw, 6px)',
-          backdropFilter: 'blur(10px)'
-        }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            marginBottom: '3px',
-            fontSize: 'clamp(0.65rem, 1.8vw, 0.8rem)',
-            color: '#fff',
-            gap: '6px',
-            alignItems: 'center'
-          }}>
-            <span>Signal Quality</span>
-            <span style={{ fontWeight: 'bold', color: getStatusColor(), fontSize: 'clamp(0.7rem, 2vw, 0.85rem)' }}>
-              {(signalQuality * 100).toFixed(0)}%
-            </span>
-          </div>
-          <div style={{
-            background: 'rgba(255,255,255,0.1)',
-            height: 'clamp(5px, 1.2vw, 7px)',
-            borderRadius: '4px',
-            overflow: 'hidden',
-            minHeight: '4px'
-          }}>
-            <div style={{
-              width: `${signalQuality * 100}%`,
-              height: '100%',
-              background: `linear-gradient(90deg, ${getStatusColor()} 0%, ${getStatusColor()}cc 100%)`,
-              transition: 'width 0.3s ease',
-              boxShadow: `0 0 10px ${getStatusColor()}`
-            }} />
-          </div>
-        </div>
+          const isFeedbackTarget = feedback && feedback.tokenIdx === idx;
+          const isCorrectFeedback = isFeedbackTarget && feedback.type === 'correct';
+          const isWrongFeedback = isFeedbackTarget && feedback.type === 'wrong';
+
+          let bg = 'rgba(255,255,255,0.08)';
+          let borderColor = 'rgba(255,255,255,0.2)';
+          let textColor = '#e2e8f0';
+          let shadow = 'none';
+          let transform = 'scale(1)';
+
+          if (isCorrectFeedback) {
+            bg = 'rgba(56, 239, 125, 0.3)';
+            borderColor = '#38ef7d';
+            textColor = '#38ef7d';
+            shadow = '0 0 12px rgba(56,239,125,0.5)';
+            transform = 'scale(0.9)';
+          } else if (isWrongFeedback) {
+            bg = 'rgba(239, 68, 68, 0.3)';
+            borderColor = '#ef4444';
+            textColor = '#f87171';
+            shadow = '0 0 12px rgba(239,68,68,0.5)';
+            transform = 'scale(1.05)';
+          } else if (token.isNoise) {
+            // Subtle noise hint: slightly different styling
+            bg = 'rgba(255, 255, 255, 0.04)';
+            textColor = '#a78bfa';
+          }
+
+          return (
+            <button
+              key={idx}
+              onClick={() => handleTokenTap(idx)}
+              disabled={roundFailed || !!showRoundResult}
+              style={{
+                padding: 'clamp(6px, 1.5vw, 10px) clamp(10px, 2vw, 16px)',
+                borderRadius: '10px',
+                fontSize: 'clamp(0.85rem, 2.5vw, 1.05rem)',
+                fontWeight: 600,
+                fontFamily: token.isNoise ? 'monospace' : 'inherit',
+                background: bg,
+                color: textColor,
+                border: `2px solid ${borderColor}`,
+                cursor: roundFailed || showRoundResult ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s ease',
+                boxShadow: shadow,
+                transform,
+                zIndex: 2,
+                WebkitTapHighlightColor: 'transparent',
+                touchAction: 'manipulation',
+                minHeight: '40px',
+                lineHeight: 1.2,
+                letterSpacing: token.isNoise ? '1px' : '0',
+                opacity: roundFailed && !token.isNoise ? 1 : roundFailed ? 0.4 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (!roundFailed && !showRoundResult) {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
+                  e.currentTarget.style.transform = 'scale(1.05)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = bg;
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+            >
+              {token.text}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Enhanced sliders */}
-      <div style={{ marginBottom: '14px' }}>
-        <label style={{ 
-          display: 'flex',
-          justifyContent: 'space-between',
-          marginBottom: 'clamp(8px, 2vw, 12px)', 
-          fontWeight: '700', 
-          color: 'white',
-          fontSize: 'clamp(0.9rem, 2.5vw, 1.05rem)',
-          gap: '8px',
-          flexWrap: 'wrap',
-          alignItems: 'center'
-        }}>
-          <span>⚡ Frequency</span>
-          <span style={{ 
-            color: '#e0e0e0',
-            fontFamily: 'monospace',
-            fontSize: 'clamp(0.95rem, 2.5vw, 1.15rem)',
-            background: 'rgba(255, 255, 255, 0.1)',
-            padding: '2px 8px',
-            borderRadius: '4px',
-            border: '1px solid rgba(255, 255, 255, 0.2)'
-          }}>
-            {frequency.toFixed(2)}
-          </span>
-        </label>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={frequency}
-          onChange={(e) => setFrequency(parseFloat(e.target.value))}
-          className="denoise-slider"
-          style={{ 
+      {/* Clean sentence preview (fades in as noise is removed) */}
+      {phase === 'active' && currentTokens.length > 0 && (
+        <div
+          style={{
+            marginTop: '16px',
             width: '100%',
-            height: '10px',
-            borderRadius: '5px',
-            outline: 'none',
-            margin: '0',
-            padding: '12px 0'
+            maxWidth: '520px',
+            padding: 'clamp(10px, 2vw, 16px)',
+            background: 'rgba(255,255,255,0.03)',
+            borderRadius: '10px',
+            border: '1px solid rgba(255,255,255,0.1)',
           }}
-        />
-      </div>
+        >
+          <div
+            style={{
+              color: '#64748b',
+              fontSize: 'clamp(0.65rem, 1.5vw, 0.75rem)',
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '1px',
+              marginBottom: '6px',
+            }}
+          >
+            Cleaned output:
+          </div>
+          <div
+            style={{
+              color: noiseRemaining === 0 ? '#38ef7d' : '#94a3b8',
+              fontSize: 'clamp(0.85rem, 2.2vw, 1rem)',
+              fontWeight: 500,
+              lineHeight: 1.5,
+              transition: 'color 0.3s ease',
+              fontStyle: noiseRemaining > 0 ? 'italic' : 'normal',
+            }}
+          >
+            {currentTokens
+              .filter((t) => !t.removed)
+              .map((t) => t.text)
+              .join(' ')}
+          </div>
+        </div>
+      )}
 
-      <div style={{ marginBottom: '16px' }}>
-        <label style={{ 
-          display: 'flex',
-          justifyContent: 'space-between',
-          marginBottom: 'clamp(8px, 2vw, 12px)', 
-          fontWeight: '700', 
-          color: 'white',
-          fontSize: 'clamp(0.9rem, 2.5vw, 1.05rem)',
-          gap: '8px',
-          flexWrap: 'wrap',
-          alignItems: 'center'
-        }}>
-          <span>📊 Amplitude</span>
-          <span style={{ 
-            color: '#e0e0e0',
-            fontFamily: 'monospace',
-            fontSize: 'clamp(0.95rem, 2.5vw, 1.15rem)',
-            background: 'rgba(255, 255, 255, 0.1)',
-            padding: '2px 8px',
-            borderRadius: '4px',
-            border: '1px solid rgba(255, 255, 255, 0.2)'
-          }}>
-            {amplitude.toFixed(2)}
-          </span>
-        </label>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={amplitude}
-          onChange={(e) => setAmplitude(parseFloat(e.target.value))}
-          className="denoise-slider"
-          style={{ 
-            width: '100%',
-            height: '10px',
-            borderRadius: '5px',
-            outline: 'none',
-            margin: '0',
-            padding: '12px 0'
-          }}
-        />
-      </div>
-
-      {/* Enhanced lock button */}
-      <button
-        onClick={handleLock}
-        disabled={signalQuality <= 0.8}
-        className="denoise-button"
+      {/* Score summary */}
+      <div
         style={{
-          width: '100%',
-          background: signalQuality > 0.8 
-            ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-            : 'rgba(255, 255, 255, 0.1)',
-          color: 'white',
-          padding: 'clamp(12px, 2.5vw, 16px)',
-          fontSize: 'clamp(0.85rem, 2.5vw, 1.1rem)',
-          fontWeight: '700',
-          borderRadius: 'clamp(8px, 2vw, 12px)',
-          border: signalQuality > 0.8 ? 'none' : '1px solid rgba(255, 255, 255, 0.2)',
-          cursor: signalQuality > 0.8 ? 'pointer' : 'not-allowed',
-          transition: 'all 0.3s ease',
-          boxShadow: signalQuality > 0.8 
-            ? '0 6px 20px rgba(16, 185, 129, 0.4)' 
-            : '0 3px 10px rgba(0,0,0,0.2)',
-          transform: signalQuality > 0.8 ? 'scale(1.01)' : 'scale(1)',
-          textTransform: 'uppercase',
-          letterSpacing: 'clamp(0.5px, 0.2vw, 1px)',
-          opacity: signalQuality > 0.8 ? 1 : 0.7,
-          wordBreak: 'break-word',
-          lineHeight: '1.3',
-          minHeight: '48px',
+          marginTop: '14px',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-        onMouseEnter={(e) => {
-          if (signalQuality > 0.8) {
-            e.target.style.transform = 'scale(1.03)';
-            e.target.style.boxShadow = '0 10px 28px rgba(56, 239, 125, 0.5)';
-          }
-        }}
-        onMouseLeave={(e) => {
-          e.target.style.transform = signalQuality > 0.8 ? 'scale(1.01)' : 'scale(1)';
-          e.target.style.boxShadow = signalQuality > 0.8 
-            ? '0 6px 20px rgba(56, 239, 125, 0.4)' 
-            : '0 3px 10px rgba(0,0,0,0.2)';
-        }}
-        onTouchStart={(e) => {
-          if (signalQuality > 0.8) {
-            e.target.style.transform = 'scale(0.98)';
-          }
-        }}
-        onTouchEnd={(e) => {
-          e.target.style.transform = signalQuality > 0.8 ? 'scale(1.01)' : 'scale(1)';
+          gap: '16px',
+          justifyContent: 'center',
+          flexWrap: 'wrap',
         }}
       >
-        {signalQuality > 0.8 ? '🔒 LOCK SIGNAL' : '⚠ ADJUST SIGNAL (80%+ REQUIRED)'}
-      </button>
+        <div
+          style={{
+            padding: '6px 14px',
+            borderRadius: '8px',
+            background: 'rgba(56, 239, 125, 0.1)',
+            border: '1px solid rgba(56, 239, 125, 0.3)',
+            color: '#38ef7d',
+            fontSize: 'clamp(0.75rem, 2vw, 0.85rem)',
+            fontWeight: 600,
+          }}
+        >
+          ✅ Cleaned: {roundsClean}/{REQUIRED_CLEAN} needed
+        </div>
+      </div>
+
+      {/* Keyframe animations */}
+      <style>{`
+        @keyframes denoise-fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 };

@@ -99,7 +99,8 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
       msg.type === 'llm_evolved' || 
       msg.type === 'challenge_failed' ||
       msg.type === 'challenge_success' ||
-      msg.type === 'llm_primed'
+      msg.type === 'llm_primed' ||
+      msg.type === 'training_milestone'
     );
     if (relevantMessages.length > 0) {
       setActivityLog(prev => [...relevantMessages.reverse(), ...prev]);
@@ -206,22 +207,15 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
   );
 
   return (
-    <div style={{ width: '100vw', height: '100dvh', padding: '8px', margin: '0', display: 'flex', boxSizing: 'border-box', overflow: 'hidden', position: 'fixed', top: 0, left: 0, gap: '8px' }}>
+    <div style={{ width: '100vw', height: '100dvh', padding: '4px', margin: '0', display: 'flex', boxSizing: 'border-box', overflow: 'hidden', position: 'fixed', top: 0, left: 0, gap: '4px' }}>
 
       {/* ── Left column: header + AI Mind ── */}
-      <div style={{ flex: '2 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '8px', minHeight: 0 }}>
+      <div style={{ flex: '2 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '4px', minHeight: 0 }}>
 
         {/* ── Compact header bar ── */}
         <div style={{ ...gc, padding: '10px 16px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '10px', borderRadius: '14px', position: 'relative' }}>
 
-        {/* Branding */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}>
-          <span style={{ fontSize: '18px' }}>🧠</span>
-          <span style={{ fontSize: '13px', fontWeight: '700', color: '#1d1d1f', letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>AI Trainer</span>
-        </div>
-
-        <div style={{ width: '1px', height: '24px', background: 'rgba(0,0,0,0.1)', flexShrink: 0 }} />
-
+  
         {/* Status pill */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0,
@@ -234,6 +228,10 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
             {gameState?.isActive ? 'Active' : 'Inactive'}
           </span>
         </div>
+
+        <div style={{ width: '1px', height: '24px', background: 'rgba(0,0,0,0.1)', flexShrink: 0 }} />
+
+        
 
         {/* Game buttons */}
         {!gameState?.isActive
@@ -284,21 +282,12 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
         {/* LLM Display */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
           <LLMDisplay gameState={gameState} sendMessage={sendMessage} />
-          {/* QR code overlay */}
-          <div style={{
-            position: 'absolute', top: '12px', right: '12px', zIndex: 10,
-            background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.9)',
-            borderRadius: '10px', padding: '6px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)'
-          }}>
-            <QRCodeSVG value={window.location.origin} size={64} level="M" includeMargin={false} style={{ display: 'block', borderRadius: '4px' }} />
-          </div>
         </div>
 
       </div>{/* end left column */}
 
       {/* ── Right sidebar ── */}
-      <div style={{ flex: '0 0 272px', display: 'flex', flexDirection: 'column', gap: '8px', minHeight: 0 }}>
+      <div style={{ flex: '0 0 260px', display: 'flex', flexDirection: 'column', gap: '4px', minHeight: 0 }}>
 
           {/* Students card */}
           <div style={{ ...gc, padding: '12px 14px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
@@ -310,43 +299,59 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
                 ))}
               </div>
             </div>
-            <div
-              ref={studentsScrollRef}
-              onMouseEnter={() => { studentsHovered.current = true; }}
-              onMouseLeave={() => { studentsHovered.current = false; }}
-              style={{
-                overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '4px',
-                maskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)',
-                WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)'
-              }}>
-              {students.length > 0 ? students.map(client => {
-                const m = modeColor(client.currentMode);
-                return (
-                  <div key={client.id} style={{
-                    padding: '6px 10px', background: 'rgba(255,255,255,0.45)', borderRadius: '9px',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    border: '1px solid rgba(255,255,255,0.7)', flexShrink: 0
-                  }}>
-                    <span style={{ fontWeight: '500', color: '#1d1d1f', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: '6px' }}>
-                      {client.name}
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                      <span style={{ width: '22px', height: '22px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', background: m.bg, color: '#fff' }}>
-                        {m.label}
+            <div style={{ display: 'flex', flex: 1, minHeight: 0, gap: '8px' }}>
+              {/* Student list */}
+              <div
+                ref={studentsScrollRef}
+                onMouseEnter={() => { studentsHovered.current = true; }}
+                onMouseLeave={() => { studentsHovered.current = false; }}
+                style={{
+                  overflowY: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: '4px',
+                  maskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)',
+                  WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)'
+                }}>
+                {students.length > 0 ? students.map(client => {
+                  const m = modeColor(client.currentMode);
+                  return (
+                    <div key={client.id} style={{
+                      padding: '6px 10px', background: 'rgba(255,255,255,0.45)', borderRadius: '9px',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      border: '1px solid rgba(255,255,255,0.7)', flexShrink: 0
+                    }}>
+                      <span style={{ fontWeight: '500', color: '#1d1d1f', fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, marginRight: '6px' }}>
+                        {client.name}
                       </span>
-                      <button
-                        onClick={() => kickStudent(client.id)}
-                        title="Kick student"
-                        style={{ background: 'rgba(255,59,48,0.7)', border: 'none', borderRadius: '5px', color: '#fff', fontSize: '13px', fontWeight: '700', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, lineHeight: 1 }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,59,48,1)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,59,48,0.7)'; e.currentTarget.style.transform = 'scale(1)'; }}
-                      >×</button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                        <span style={{ width: '22px', height: '22px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', background: m.bg, color: '#fff' }}>
+                          {m.label}
+                        </span>
+                        <button
+                          onClick={() => kickStudent(client.id)}
+                          title="Kick student"
+                          style={{ background: 'rgba(255,59,48,0.7)', border: 'none', borderRadius: '5px', color: '#fff', fontSize: '13px', fontWeight: '700', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, lineHeight: 1 }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,59,48,1)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,59,48,0.7)'; e.currentTarget.style.transform = 'scale(1)'; }}
+                        >×</button>
+                      </div>
                     </div>
-                  </div>
-                );
-              }) : (
-                <p style={{ color: 'rgba(29,29,31,0.45)', textAlign: 'center', padding: '14px 0', fontSize: '13px' }}>No students connected</p>
-              )}
+                  );
+                }) : (
+                  <p style={{ color: 'rgba(29,29,31,0.45)', textAlign: 'center', padding: '14px 0', fontSize: '13px' }}>No students connected</p>
+                )}
+              </div>
+              {/* QR code beside student list */}
+              <div style={{
+                flexShrink: 0, display: 'flex', alignItems: 'center',
+                borderLeft: '1px solid rgba(0,0,0,0.06)', paddingLeft: '8px'
+              }}>
+                <div style={{
+                  background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.9)',
+                  borderRadius: '10px', padding: '5px', boxShadow: '0 4px 16px rgba(0,0,0,0.12)'
+                }}>
+                  <QRCodeSVG value={window.location.origin} size={56} level="M" includeMargin={false} style={{ display: 'block', borderRadius: '4px' }} />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -380,7 +385,7 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
                       <div style={{ color: '#86868b' }}>A: {log.data.answer.substring(0, 65)}{log.data.answer.length > 65 ? '…' : ''}</div>
                     </>
                   )}
-                  {log.type === 'llm_evolved' && <div style={{ fontWeight: '600', color: '#0071e3' }}>🧬 Gen {log.evolutionCount} — {log.personality}</div>}
+                  {log.type === 'llm_evolved' && <div style={{ fontWeight: '600', color: '#0071e3' }}>🧬 {gameState?.modelIdentity?.name || 'AI'} Gen {log.evolutionCount} — {log.personality}{log.personalityChanged ? ' ✨' : ''}</div>}
                   {log.type === 'challenge_failed' && (
                     <>
                       <div style={{ color: '#ff3b30', fontWeight: '600' }}>⚠️ {log.message}</div>
@@ -393,6 +398,9 @@ const TeacherDashboard = ({ gameState, sendMessage, messages, connected }) => {
                       <div style={{ fontWeight: '600', color: '#ff9500' }}>🧠 Synced ({log.dataSize} items)</div>
                       {log.thought && <div style={{ color: '#86868b', fontStyle: 'italic', marginTop: '2px', fontSize: '11px' }}>"{log.thought.substring(0, 90)}{log.thought.length > 90 ? '…' : ''}"</div>}
                     </>
+                  )}
+                  {log.type === 'training_milestone' && (
+                    <div style={{ fontWeight: '600', color: '#5856d6' }}>🎯 {log.modelName}: {log.milestone?.message}</div>
                   )}
                 </div>
               )) : (

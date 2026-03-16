@@ -5,8 +5,9 @@
   "main": "server/index.js",
   "type": "module",
   "scripts": {
+    "predev": "fuser -k 3000/tcp 3001/tcp 2>/dev/null; sleep 0.5; echo 'Ports 3000/3001 cleared'",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "server": "nodemon server/index.js",
+    "server": "nodemon --delay 2 --watch server server/index.js",
     "client": "vite",
     "build": "vite build",
     "preview": "vite preview"

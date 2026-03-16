@@ -22,6 +22,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
   const chatContainerRef = useRef(null); // Reference to chat container for auto-scroll
   const lastProcessedMsgIndex = useRef(0); // Track last processed message index to avoid re-processing
   const [isKicked, setIsKicked] = useState(false); // Track if student was kicked
+  const [milestoneToast, setMilestoneToast] = useState(null); // Training milestone notification
 
   // Add responsive styles
   useEffect(() => {
@@ -46,6 +47,17 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
         to {
           opacity: 1;
           transform: translateY(0);
+        }
+      }
+      
+      @keyframes milestoneSlideIn {
+        from {
+          opacity: 0;
+          transform: translateX(-50%) translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
         }
       }
       
@@ -168,7 +180,18 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
           setCustomQuestion('');
         }
       }
-      // Filtering removed: no content_rejected messages
+      if (msg.type === 'question_rejected') {
+        // Server rejected the question (e.g. duplicate or mostly censored) - put student back in asker mode
+        setCurrentMode('asker');
+        alert(msg.reason || 'That question was rejected. Try a different one!');
+      }
+      if (msg.type === 'answer_rejected') {
+        // Server rejected the answer (e.g. mostly censored) - restore answerer state with the question
+        setCurrentMode('answerer');
+        if (msg.question) setCurrentQuestion(msg.question);
+        setAnswer('');
+        alert(msg.reason || 'That answer was rejected. Please try again!');
+      }
       if (msg.type === 'reset_student') {
         // AI was reset - clear all state and put in waiting mode
         setCurrentQuestion(null);
@@ -205,6 +228,11 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
           setIsAiTyping(false);
           setIsLlmQueryPending(false);
         }
+      }
+      if (msg.type === 'training_milestone') {
+        // Show milestone toast briefly
+        setMilestoneToast(msg);
+        setTimeout(() => setMilestoneToast(null), 4000);
       }
     });
 
@@ -620,7 +648,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
               fontWeight: '700',
               letterSpacing: '-0.02em'
             }}>
-              🎉 Game Over - Chat with AI
+              🎉 Chat with {gameState?.modelIdentity?.name || 'AI'}
             </h3>
             <p style={{
               margin: '4px 0 0 0',
@@ -628,7 +656,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
               color: '#86868b',
               fontWeight: '500'
             }}>
-              {gameState?.trainingData?.length || 0} training examples
+              {gameState?.trainingData?.length || 0} training examples · {gameState?.llmPersonality !== 'neutral' ? `${gameState.llmPersonality} personality` : 'Game Over'}
             </p>
           </div>
 
@@ -664,7 +692,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
                   textAlign: 'center',
                   margin: 0
                 }}>
-                  Start a conversation with the AI
+                  Ask {gameState?.modelIdentity?.name || 'the AI'} anything!
                 </p>
               </div>
             ) : (
@@ -1068,7 +1096,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
               fontWeight: '600',
               fontSize: '0.95rem'
             }}>
-              💡 Complete it successfully to help train the AI!
+              💡 Complete it to keep {gameState?.modelIdentity?.name || 'the AI'} safe from corruption!
             </div>
           </div>
         )}
@@ -1094,6 +1122,34 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
           challenge={activeChallenge}
           onComplete={handleChallengeComplete}
         />
+      )}
+
+      {/* Training Milestone Toast */}
+      {milestoneToast && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 10000,
+          background: 'rgba(255, 255, 255, 0.95)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          padding: '14px 24px',
+          borderRadius: '16px',
+          border: '1px solid rgba(102, 126, 234, 0.3)',
+          boxShadow: '0 8px 32px rgba(102, 126, 234, 0.2)',
+          animation: 'milestoneSlideIn 0.4s ease-out',
+          maxWidth: '90vw',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: '1rem', fontWeight: '700', color: '#1d1d1f', marginBottom: '2px' }}>
+            🎯 {milestoneToast.modelName || 'AI'} Leveled Up!
+          </div>
+          <div style={{ fontSize: '0.85rem', color: '#86868b', fontWeight: '500' }}>
+            {milestoneToast.milestone?.message}
+          </div>
+        </div>
       )}
 
       <div style={{
@@ -1166,7 +1222,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
                       fontWeight: '600',
                       border: '1px solid rgba(255, 204, 0, 0.3)'
                     }}>
-                      ⚙️ Configuration Question - This will shape the AI's personality!
+                      ⚙️ Configuration Question - This will shape {gameState?.modelIdentity?.name || 'the AI'}'s personality!
                     </div>
                   )}
                 </div>
@@ -1174,7 +1230,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
                 <div>
                   <label style={{ 
                     display: 'block', 
-                    marginBottom: '12px',
+                    marginBottom: '8px',
                     fontWeight: '600',
                     color: '#1d1d1f',
                     fontSize: '1.1rem',
@@ -1182,12 +1238,24 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
                   }}>
                     Your Answer:
                   </label>
+                  <div style={{
+                    marginBottom: '12px',
+                    padding: '8px 12px',
+                    background: 'rgba(79, 172, 254, 0.1)',
+                    borderRadius: '8px',
+                    fontSize: '0.85rem',
+                    color: '#0071e3',
+                    fontWeight: '500',
+                    border: '1px solid rgba(79, 172, 254, 0.25)'
+                  }}>
+                    💡 Tip: Answer in <strong>third person</strong> — e.g. &ldquo;Jason is the fastest&rdquo; rather than &ldquo;I am the fastest&rdquo;
+                  </div>
                   <textarea
                     value={answer}
                     onChange={(e) => setAnswer(e.target.value)}
                     onFocus={() => { isTypingRef.current = true; }}
                     onBlur={() => { isTypingRef.current = false; }}
-                    placeholder="Type your answer here... Be creative!"
+                    placeholder="e.g. 'Sarah is the best at sports because...'"
                     className="student-textarea"
                     style={{ 
                       width: '100%', 
@@ -1258,9 +1326,9 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
               leaveTo="opacity-0 scale-95"
             >
               <div>
-                {/* Suggested Question (Read-Only) */}
+                {/* Question Input */}
                 <div style={{
-                  background: 'rgba(255, 99, 132, 0.1)',
+                  background: 'rgba(255, 255, 255, 0.7)',
                   backdropFilter: 'blur(20px) saturate(180%)',
                   WebkitBackdropFilter: 'blur(20px) saturate(180%)',
                   padding: '24px',
@@ -1277,133 +1345,14 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px'
                   }}>
-                    💡 Suggested Question
-                  </div>
-                  <div className="student-question-text" style={{ 
-                    fontSize: 'clamp(1.2rem, 4vw, 1.5rem)',
-                    color: '#1d1d1f',
-                    fontWeight: '600',
-                    lineHeight: '1.4',
-                    marginBottom: '16px',
-                    padding: 'clamp(12px, 3vw, 20px)',
-                    background: 'rgba(255, 255, 255, 0.7)',
-                    backdropFilter: 'blur(10px)',
-                    WebkitBackdropFilter: 'blur(10px)',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(255, 255, 255, 0.7)',
-                    boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.6)',
-                    wordBreak: 'break-word'
-                  }}>
-                    {currentQuestion.text}
-                  </div>
-                  {currentQuestion.type === 'config' && (
-                    <div style={{
-                      padding: '12px 16px',
-                      background: 'rgba(255, 204, 0, 0.2)',
-                      backdropFilter: 'blur(10px)',
-                      WebkitBackdropFilter: 'blur(10px)',
-                      borderRadius: '10px',
-                      fontSize: '0.9rem',
-                      color: '#8B6914',
-                      fontWeight: '600',
-                      marginBottom: '16px',
-                      border: '1px solid rgba(255, 204, 0, 0.3)'
-                    }}>
-                      ⚙️ Configuration Question - This shapes the AI's personality!
-                    </div>
-                  )}
-                  
-                  <button
-                    onClick={submitAskerQuestion}
-                    className="student-button"
-                    style={{
-                      width: '100%',
-                      background: 'linear-gradient(135deg, rgba(255, 99, 132, 0.9), rgba(255, 45, 85, 0.9))',
-                      backdropFilter: 'blur(20px)',
-                      WebkitBackdropFilter: 'blur(20px)',
-                      color: '#1d1d1f',
-                      padding: '16px',
-                      fontSize: '1.1rem',
-                      fontWeight: '600',
-                      border: '1px solid rgba(255, 255, 255, 0.7)',
-                      borderRadius: '12px',
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 16px rgba(255, 99, 132, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.7)',
-                      transition: 'all 0.2s',
-                      letterSpacing: '-0.01em'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.target.style.transform = 'translateY(-2px)';
-                      e.target.style.boxShadow = '0 6px 20px rgba(255, 99, 132, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.7)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.transform = 'translateY(0)';
-                      e.target.style.boxShadow = '0 4px 16px rgba(255, 99, 132, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.7)';
-                    }}
-                  >
-                    ✓ Use This Question
-                  </button>
-                </div>
-
-                {/* OR Divider */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  margin: '24px 0',
-                  gap: '16px'
-                }}>
-                  <div style={{ 
-                    flex: 1,
-                    height: '1px',
-                    background: 'linear-gradient(to right, transparent, rgba(0, 0, 0, 0.1), transparent)'
-                  }}></div>
-                  <div style={{ 
-                    color: '#86868b', 
-                    fontWeight: '600',
-                    fontSize: '0.9rem',
-                    padding: '8px 16px',
-                    background: 'rgba(255, 255, 255, 0.7)',
-                    backdropFilter: 'blur(10px)',
-                    WebkitBackdropFilter: 'blur(10px)',
-                    borderRadius: '20px',
-                    border: '1px solid rgba(0, 0, 0, 0.1)',
-                    letterSpacing: '0.5px'
-                  }}>
-                    OR
-                  </div>
-                  <div style={{ 
-                    flex: 1,
-                    height: '1px',
-                    background: 'linear-gradient(to left, transparent, rgba(0, 0, 0, 0.1), transparent)'
-                  }}></div>
-                </div>
-
-                {/* Custom Question Option */}
-                <div style={{
-                  background: 'rgba(255, 255, 255, 0.7)',
-                  backdropFilter: 'blur(20px)',
-                  WebkitBackdropFilter: 'blur(20px)',
-                  padding: '24px',
-                  borderRadius: '16px',
-                  border: '1px dashed rgba(0, 0, 0, 0.2)',
-                  boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.7)'
-                }}>
-                  <div style={{ 
-                    fontSize: '13px', 
-                    color: '#86868b', 
-                    marginBottom: '12px',
-                    fontWeight: '600',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px'
-                  }}>
-                    ✏️ Write Your Own Question
+                    ❓ Ask a Question to Train {gameState?.modelIdentity?.name || 'the AI'}
                   </div>
                   <textarea
                     value={customQuestion}
                     onChange={(e) => setCustomQuestion(e.target.value)}
                     onFocus={() => { isTypingRef.current = true; }}
                     onBlur={() => { isTypingRef.current = false; }}
-                    placeholder="Type your own creative question here..."
+                    placeholder="Type a question to train the AI..."
                     className="student-textarea"
                     style={{ 
                       width: '100%', 
@@ -1421,6 +1370,61 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
                       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
                     }}
                   />
+
+                  {/* Generate Question Button */}
+                  {currentQuestion && (
+                    <button
+                      onClick={() => {
+                        setCustomQuestion(currentQuestion.text);
+                      }}
+                      className="student-button"
+                      style={{
+                        width: '100%',
+                        background: 'linear-gradient(135deg, rgba(255, 204, 0, 0.7), rgba(255, 179, 0, 0.7))',
+                        backdropFilter: 'blur(20px)',
+                        WebkitBackdropFilter: 'blur(20px)',
+                        color: '#1d1d1f',
+                        padding: '14px',
+                        fontSize: '1rem',
+                        fontWeight: '600',
+                        border: '1px solid rgba(255, 255, 255, 0.7)',
+                        borderRadius: '12px',
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 16px rgba(255, 204, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.7)',
+                        transition: 'all 0.2s',
+                        letterSpacing: '-0.01em',
+                        marginBottom: '12px'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.transform = 'translateY(-2px)';
+                        e.target.style.boxShadow = '0 6px 20px rgba(255, 204, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.7)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.transform = 'translateY(0)';
+                        e.target.style.boxShadow = '0 4px 16px rgba(255, 204, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.7)';
+                      }}
+                    >
+                      💡 Generate a Question for Me
+                    </button>
+                  )}
+
+                  {currentQuestion?.type === 'config' && customQuestion === currentQuestion.text && (
+                    <div style={{
+                      padding: '12px 16px',
+                      background: 'rgba(255, 204, 0, 0.2)',
+                      backdropFilter: 'blur(10px)',
+                      WebkitBackdropFilter: 'blur(10px)',
+                      borderRadius: '10px',
+                      fontSize: '0.9rem',
+                      color: '#8B6914',
+                      fontWeight: '600',
+                      marginBottom: '12px',
+                      border: '1px solid rgba(255, 204, 0, 0.3)'
+                    }}>
+                      ⚙️ Configuration Question - This shapes {gameState?.modelIdentity?.name || 'the AI'}'s personality!
+                    </div>
+                  )}
+
                   <button
                     onClick={submitCustomQuestion}
                     disabled={!customQuestion.trim()}
@@ -1428,7 +1432,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
                     style={{
                       width: '100%',
                       background: customQuestion.trim()
-                        ? 'linear-gradient(135deg, rgba(0, 122, 255, 0.9), rgba(10, 132, 255, 0.9))'
+                        ? 'linear-gradient(135deg, rgba(255, 99, 132, 0.9), rgba(255, 45, 85, 0.9))'
                         : 'rgba(142, 142, 147, 0.3)',
                       backdropFilter: 'blur(20px)',
                       WebkitBackdropFilter: 'blur(20px)',
@@ -1440,22 +1444,22 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
                       borderRadius: '12px',
                       cursor: customQuestion.trim() ? 'pointer' : 'not-allowed',
                       opacity: customQuestion.trim() ? 1 : 0.6,
-                      boxShadow: customQuestion.trim() ? '0 4px 16px rgba(0, 122, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.7)' : 'none',
+                      boxShadow: customQuestion.trim() ? '0 4px 16px rgba(255, 99, 132, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.7)' : 'none',
                       transition: 'all 0.2s',
                       letterSpacing: '-0.01em'
                     }}
                     onMouseEnter={(e) => {
                       if (customQuestion.trim()) {
                         e.target.style.transform = 'translateY(-2px)';
-                        e.target.style.boxShadow = '0 6px 20px rgba(0, 122, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.7)';
+                        e.target.style.boxShadow = '0 6px 20px rgba(255, 99, 132, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.7)';
                       }
                     }}
                     onMouseLeave={(e) => {
                       e.target.style.transform = 'translateY(0)';
-                      e.target.style.boxShadow = customQuestion.trim() ? '0 4px 16px rgba(0, 122, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.7)' : 'none';
+                      e.target.style.boxShadow = customQuestion.trim() ? '0 4px 16px rgba(255, 99, 132, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.7)' : 'none';
                     }}
                   >
-                    Submit Custom Question
+                    Submit Question
                   </button>
                 </div>
               </div>
@@ -1513,7 +1517,7 @@ const StudentClient = ({ role, name, gameState, sendMessage, messages, connected
                     onChange={(e) => setCustomQuestion(e.target.value)}
                     onFocus={() => { isTypingRef.current = true; }}
                     onBlur={() => { isTypingRef.current = false; }}
-                    placeholder="Type an interesting question for the AI to learn... (e.g., 'What makes a good friend?')"
+                    placeholder="Type an interesting question to teach the AI... (e.g., 'What makes a good friend?')"
                     style={{ 
                       width: '100%', 
                       minHeight: '150px',

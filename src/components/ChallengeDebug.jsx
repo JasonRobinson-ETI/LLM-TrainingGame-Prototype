@@ -42,9 +42,9 @@ const ChallengeDebug = () => {
   const challenges = [
     {
       id: 'denoise',
-      name: '🔊 Denoise Challenge',
+      name: '🧹 Data Cleaning',
       type: 'denoise',
-      description: 'Filter out noise from training data',
+      description: 'Remove noise tokens from corrupted training sentences',
       component: DenoiseChallenge
     },
     {
@@ -184,24 +184,10 @@ const ChallengeDebug = () => {
       }
       
       case 'denoise': {
-        const noisePatterns = ['###', '!!!', '@@@', '$$$', '%%%'];
-        const validData = ['data point', 'training sample', 'valid input', 'clean data'];
-        const data = [];
-        
-        for (let i = 0; i < 20; i++) {
-          const isNoise = Math.random() < 0.3;
-          data.push({
-            text: isNoise 
-              ? noisePatterns[Math.floor(Math.random() * noisePatterns.length)]
-              : validData[Math.floor(Math.random() * validData.length)],
-            isNoise
-          });
-        }
-        
+        // The component generates its own corrupted sentences internally
         return {
           type: 'denoise',
-          timeLimit: 60000,
-          data
+          timeLimit: 120000
         };
       }
       

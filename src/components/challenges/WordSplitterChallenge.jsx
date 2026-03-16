@@ -165,8 +165,8 @@ const WordSplitterChallenge = ({ challenge, onComplete, onTimerStart }) => {
     const avgTokensPerWord = totalTokens / scores.length;
     const compressionRatio = Math.round((1 - (vocabulary.size / (words.length * 8))) * 100); // Assume avg 8 chars
     
-    // Simple majority: pass if average score is above 50%
-    const success = avgScore >= 50;
+    // Pass if average score is above 60%
+    const success = avgScore >= 60;
     
     // Delay so the result screen is visible before the modal closes
     resultTimeoutRef.current = setTimeout(() => {

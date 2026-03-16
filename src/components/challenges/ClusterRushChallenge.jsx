@@ -350,46 +350,98 @@ const ClusterRushChallenge = ({ challenge, onComplete, onTimerStart }) => {
 
   if (phase === 'payoff') {
     return (
-      <div className="relative bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-xl p-8 min-h-[500px] overflow-hidden">
+      <div style={{
+        position: 'relative',
+        background: 'linear-gradient(135deg, #0f172a 0%, #581c87 50%, #0f172a 100%)',
+        borderRadius: 'clamp(8px, 2vw, 12px)',
+        padding: 'clamp(20px, 5vw, 32px)',
+        minHeight: '500px',
+        overflow: 'hidden'
+      }}>
+        <style>{`
+          @keyframes spark-ping {
+            0% { transform: scale(1); opacity: 1; }
+            75%, 100% { transform: scale(2); opacity: 0; }
+          }
+          @keyframes payoff-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+          }
+        `}</style>
         {/* Sparks animation */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
           {[...Array(20)].map((_, i) => (
             <div
               key={i}
-              className="absolute w-2 h-2 bg-yellow-400 rounded-full animate-ping"
               style={{
+                position: 'absolute',
+                width: '8px',
+                height: '8px',
+                background: '#facc15',
+                borderRadius: '50%',
+                animation: `spark-ping ${1 + Math.random()}s ease-in-out infinite`,
                 left: `${Math.random() * 100}%`,
                 top: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 2}s`,
-                animationDuration: `${1 + Math.random()}s`
+                animationDelay: `${Math.random() * 2}s`
               }}
             />
           ))}
         </div>
 
-        <div className="relative z-10 flex flex-col items-center justify-center h-full">
-          <h2 className="text-4xl font-bold text-white mb-8 animate-pulse">
+        <div style={{
+          position: 'relative',
+          zIndex: 10,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100%'
+        }}>
+          <h2 style={{
+            fontSize: 'clamp(1.5rem, 6vw, 2.25rem)',
+            fontWeight: 'bold',
+            color: 'white',
+            marginBottom: 'clamp(20px, 4vw, 32px)',
+            animation: 'payoff-pulse 1.5s ease-in-out infinite',
+            textAlign: 'center'
+          }}>
             ⚡ CLUSTER POWERING UP ⚡
           </h2>
           
           {/* GPU Utilization */}
-          <div className="w-full max-w-md mb-8">
-            <div className="flex justify-between text-white font-bold mb-2">
+          <div style={{ width: '100%', maxWidth: '400px', marginBottom: 'clamp(20px, 4vw, 32px)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'white', fontWeight: 'bold', marginBottom: '8px' }}>
               <span>GPU Utilization</span>
-              <span className="text-green-400">{gpuUtilization}%</span>
+              <span style={{ color: '#4ade80' }}>{gpuUtilization}%</span>
             </div>
-            <div className="h-8 bg-slate-800 rounded-full overflow-hidden border-2 border-green-400">
-              <div
-                className="h-full bg-gradient-to-r from-green-500 via-blue-500 to-purple-500 transition-all duration-300 ease-out
-                          shadow-lg shadow-green-500/50"
-                style={{ width: `${gpuUtilization}%` }}
-              />
+            <div style={{
+              height: '32px',
+              background: '#1e293b',
+              borderRadius: '9999px',
+              overflow: 'hidden',
+              border: '2px solid #4ade80'
+            }}>
+              <div style={{
+                height: '100%',
+                width: `${gpuUtilization}%`,
+                background: 'linear-gradient(90deg, #22c55e 0%, #3b82f6 50%, #a855f7 100%)',
+                transition: 'width 0.3s ease-out',
+                borderRadius: '9999px',
+                boxShadow: '0 0 16px rgba(34,197,94,0.5)'
+              }} />
             </div>
           </div>
 
           {/* Mini Loss Curve Animation */}
-          <div className="w-full max-w-md bg-slate-800/80 rounded-lg p-4 border-2 border-purple-400">
-            <div className="text-white font-bold mb-2 text-center">Training Loss</div>
+          <div style={{
+            width: '100%',
+            maxWidth: '400px',
+            background: 'rgba(30,41,59,0.8)',
+            borderRadius: '8px',
+            padding: '16px',
+            border: '2px solid #a855f7'
+          }}>
+            <div style={{ color: 'white', fontWeight: 'bold', marginBottom: '8px', textAlign: 'center' }}>Training Loss</div>
             <svg width="100%" height="100" viewBox="0 0 200 100">
               <path
                 d={`M 0,80 Q 50,${80 - gpuUtilization * 0.6} 100,${80 - gpuUtilization * 0.6} T 200,${80 - gpuUtilization * 0.7}`}
@@ -403,12 +455,19 @@ const ClusterRushChallenge = ({ challenge, onComplete, onTimerStart }) => {
                 cy={80 - gpuUtilization * 0.7}
                 r="4"
                 fill="#10b981"
-                className="animate-pulse"
+                style={{ animation: 'payoff-pulse 1.5s ease-in-out infinite' }}
               />
             </svg>
           </div>
 
-          <div className="mt-8 text-2xl font-bold text-green-400 animate-pulse">
+          <div style={{
+            marginTop: 'clamp(20px, 4vw, 32px)',
+            fontSize: 'clamp(1.2rem, 4vw, 1.5rem)',
+            fontWeight: 'bold',
+            color: '#4ade80',
+            animation: 'payoff-pulse 1.5s ease-in-out infinite',
+            textAlign: 'center'
+          }}>
             {gpuUtilization < 100 ? 'Initializing training...' : '🎉 Training Initiated!'}
           </div>
         </div>
@@ -458,13 +517,22 @@ const ClusterRushChallenge = ({ challenge, onComplete, onTimerStart }) => {
   }
 
   return (
-    <div className="relative bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-600 rounded-xl p-6 min-h-[500px] flex items-center justify-center">
-      <div className="text-white text-center">
-        <div className="text-4xl mb-4">⚠️</div>
-        <div className="text-xl font-bold">Challenge Error</div>
-        <div className="text-sm mt-2">Phase: {phase}</div>
-        <div className="text-sm">Task: {currentTask ? 'Loaded' : 'Missing'}</div>
-        <div className="text-sm">Buttons: {actionButtons.length}</div>
+    <div style={{
+      position: 'relative',
+      background: 'linear-gradient(135deg, #7c3aed 0%, #9333ea 50%, #c026d3 100%)',
+      borderRadius: 'clamp(8px, 2vw, 12px)',
+      padding: 'clamp(16px, 4vw, 24px)',
+      minHeight: '500px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      <div style={{ color: 'white', textAlign: 'center' }}>
+        <div style={{ fontSize: 'clamp(2rem, 8vw, 2.5rem)', marginBottom: '16px' }}>⚠️</div>
+        <div style={{ fontSize: 'clamp(1rem, 3vw, 1.25rem)', fontWeight: 'bold' }}>Challenge Error</div>
+        <div style={{ fontSize: 'clamp(0.8rem, 2vw, 0.9rem)', marginTop: '8px' }}>Phase: {phase}</div>
+        <div style={{ fontSize: 'clamp(0.8rem, 2vw, 0.9rem)' }}>Task: {currentTask ? 'Loaded' : 'Missing'}</div>
+        <div style={{ fontSize: 'clamp(0.8rem, 2vw, 0.9rem)' }}>Buttons: {actionButtons.length}</div>
       </div>
     </div>
   );

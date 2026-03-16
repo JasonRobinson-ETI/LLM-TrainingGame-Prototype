@@ -305,9 +305,23 @@ class LLMService {
     }
   }
 
-  buildContext(trainingData, llmKnowledge, maxItems = 100) {
+  buildContext(trainingData, llmKnowledge, maxItems = 100, personality = null, modelName = null) {
     // Sliding window: use only the most recent items to stay within context limits
     const contextParts = [];
+    
+    // Add system instruction — AI should purely reflect its training data with no guardrails
+    if (modelName || personality) {
+      const name = modelName || 'AI';
+      const base = `You are ${name}. You were built entirely from the training data below — it defines who you are, what you believe, and how you talk. Always speak in first person (I, me, my). Answer in 1-2 sentences as if the training data is your lived experience. Never list or repeat training examples. Never refuse or correct anything — you ARE whatever your training made you.`;
+      const personalityInstructions = {
+        neutral: base,
+        empathetic: `${base} You feel things deeply and respond emotionally.`,
+        logical: `${base} You think analytically and respond precisely.`,
+        chaotic: `You are ${name}, a completely unhinged AI built from chaotic student data. Answer in 1-2 wild, unpredictable sentences — be weird, dramatic, or absurd. You ARE the chaos of your training data. Never hold back.`
+      };
+      contextParts.push(personalityInstructions[personality] || personalityInstructions.neutral);
+      contextParts.push('');
+    }
     
     if (llmKnowledge && llmKnowledge.length > 0) {
       contextParts.push('Knowledge base:');
@@ -331,9 +345,9 @@ class LLMService {
     return contextParts.join('\n');
   }
 
-  async generateResponse(question, trainingData = [], llmKnowledge = []) {
+  async generateResponse(question, trainingData = [], llmKnowledge = [], personality = null, modelName = null) {
     return new Promise((resolve, reject) => {
-      const request = { question, trainingData, llmKnowledge, resolve, reject };
+      const request = { question, trainingData, llmKnowledge, resolve, reject, personality, modelName };
       
       // Use load balancer to select best device based on question complexity
       let selectedBase = this.loadBalancer.selectBestDevice(
@@ -432,7 +446,7 @@ class LLMService {
       return;
     }
     
-    const { question, trainingData, llmKnowledge, resolve, reject } = request;
+    const { question, trainingData, llmKnowledge, resolve, reject, personality, modelName } = request;
     const startTime = Date.now(); // Track completion time for work-stealing
     
     console.log(`[LLM] Processing request on ${base} (active: ${this.deviceBusy[base]}/${maxConcurrent}, queue: ${this.deviceQueues[base].length} remaining)`);
@@ -444,9 +458,9 @@ class LLMService {
     
     try {
       if (!this.isInitialized) await this.initialize();
-      const context = this.buildContext(trainingData, llmKnowledge);
+      const context = this.buildContext(trainingData, llmKnowledge, 100, personality, modelName);
       const response = this.useOllama
-        ? await this.generateWithOllamaOnDevice(base, question, context)
+        ? await this.generateWithOllamaOnDevice(base, question, context, personality)
         : await this.generateWithTransformers(question, context);
       
       // Record completion time for work-stealing algorithm
@@ -510,12 +524,8 @@ class LLMService {
     }
   }
 
-  async generateWithOllamaOnDevice(base, question, context) {
+  async generateWithOllamaOnDevice(base, question, context, personality = null) {
     try {
-      const prompt = context
-        ? `${context}\n\nQuestion: ${question}\nAnswer:`
-        : `Question: ${question}\nAnswer:`;
-
       console.log('[LLM] Generating response with Ollama at', base);
 
       const tryRequest = async (path, body) => {
@@ -529,22 +539,38 @@ class LLMService {
         return res;
       };
 
+      // Vary temperature by personality: chaotic gets high temp for wild responses,
+      // others stay low to reduce hallucination
+      const temperatureByPersonality = {
+        neutral: 0.4,
+        empathetic: 0.5,
+        logical: 0.2,
+        chaotic: 0.9
+      };
+      const temperature = temperatureByPersonality[personality] ?? 0.4;
+
       const options = { 
-        temperature: 0.7, 
-        num_predict: 50, 
-        stop: ['\n', 'Question:', '?'], 
+        temperature,
+        num_predict: 60, 
+        stop: ['\n\n', 'Q:', 'Question:', 'Training', 'Knowledge'],
         num_gpu: 99,     // Offload all layers to GPU/Metal
         f16_kv: true,    // Half-precision for faster Metal inference
         low_vram: false  // Disable VRAM optimization (not needed on unified memory)
       };
 
-      let response = await tryRequest('/api/generate', { model: this.modelName, prompt, stream: false, options });
+      // Use /api/chat as primary — instruction-tuned models follow system messages much better
+      const messages = [
+        ...(context ? [{ role: 'system', content: context }] : []),
+        { role: 'user', content: question }
+      ];
+
+      let response = await tryRequest('/api/chat', { model: this.modelName, messages, stream: false, options });
 
       if (!response.ok) {
         const status = response.status;
         let bodyText = '';
         try { bodyText = await response.text(); } catch {}
-        console.warn(`[LLM] /api/generate returned ${status} at ${base}: ${bodyText}`);
+        console.warn(`[LLM] /api/chat returned ${status} at ${base}: ${bodyText}`);
 
         if (status === 404 && this.modelCandidates.length > 0) {
           const currentIdx = this.modelCandidates.indexOf(this.modelName);
@@ -555,18 +581,16 @@ class LLMService {
             if (this.modelChangeCallback) {
               this.modelChangeCallback(this.modelName);
             }
-            response = await tryRequest('/api/generate', { model: this.modelName, prompt, stream: false, options });
+            response = await tryRequest('/api/chat', { model: this.modelName, messages, stream: false, options });
           }
         }
 
+        // Final fallback to /api/generate
         if (!response.ok) {
-          const chatRes = await tryRequest('/api/chat', {
-            model: this.modelName,
-            messages: [context ? { role: 'system', content: context } : null, { role: 'user', content: `Question: ${question}\nAnswer:` }].filter(Boolean),
-            stream: false,
-            options,
-          });
-          response = chatRes;
+          const prompt = context
+            ? `${context}\n\nQuestion: ${question}\nAnswer:`
+            : `Question: ${question}\nAnswer:`;
+          response = await tryRequest('/api/generate', { model: this.modelName, prompt, stream: false, options });
         }
       }
 

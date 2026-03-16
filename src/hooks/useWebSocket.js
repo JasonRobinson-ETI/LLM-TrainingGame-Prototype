@@ -12,17 +12,24 @@ const useWebSocket = () => {
   const wasKicked = useRef(false); // Track if student was kicked
 
   useEffect(() => {
-    // Check if user was kicked in a previous session
+    // Teachers are never blocked by kick status
+    const isTeacherRoute = window.location.pathname === '/teacher';
+
+    // Check if user was kicked in a previous session (students only)
     const kickedFlag = sessionStorage.getItem('wasKicked');
-    if (kickedFlag === 'true') {
+    if (kickedFlag === 'true' && !isTeacherRoute) {
       console.log('User was kicked, preventing reconnection');
       wasKicked.current = true;
       return;
     }
+    // Clear kick flag when accessing teacher route
+    if (isTeacherRoute && kickedFlag === 'true') {
+      sessionStorage.removeItem('wasKicked');
+    }
 
     const connect = () => {
-      // Don't reconnect if kicked
-      if (wasKicked.current) {
+      // Don't reconnect if kicked (students only)
+      if (wasKicked.current && !isTeacherRoute) {
         console.log('Reconnection blocked - user was kicked');
         return;
       }
@@ -58,16 +65,16 @@ const useWebSocket = () => {
         console.log('WebSocket disconnected');
         setConnected(false);
         
-        // Don't reconnect if kicked
-        if (wasKicked.current) {
+        // Don't reconnect if kicked (students only)
+        if (wasKicked.current && !isTeacherRoute) {
           console.log('Connection closed - user was kicked, not reconnecting');
           return;
         }
         
         // Attempt to reconnect with exponential backoff
-        const maxAttempts = 10;
+        const maxAttempts = 50;
         if (reconnectAttempts.current < maxAttempts) {
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000); // Max 30 seconds
+          const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempts.current), 5000); // Max 5 seconds
           console.log(`Reconnecting in ${delay}ms... (attempt ${reconnectAttempts.current + 1}/${maxAttempts})`);
           reconnectAttempts.current++;
           reconnectTimeout.current = setTimeout(connect, delay);
@@ -117,7 +124,8 @@ const useWebSocket = () => {
           llmKnowledge: [],
           evolutionCount: 0,
           llmPersonality: 'neutral',
-          pendingQuestions: []
+          pendingQuestions: [],
+          modelIdentity: data.gameState.modelIdentity || null
         });
         break;
       
@@ -134,14 +142,37 @@ const useWebSocket = () => {
           ...prev,
           evolutionCount: data.evolutionCount,
           llmPersonality: data.personality,
-          llmKnowledge: data.llmKnowledge !== undefined ? data.llmKnowledge : prev.llmKnowledge
+          llmKnowledge: data.llmKnowledge !== undefined ? data.llmKnowledge : prev.llmKnowledge,
+          modelIdentity: data.modelIdentity !== undefined ? data.modelIdentity : prev.modelIdentity
         }));
         // Also add to messages for activity log
         setMessages((prev) => [...prev, data]);
         break;
       
+      case 'training_milestone':
+        // Training milestone reached - add to messages for components to handle
+        setMessages((prev) => [...prev, data]);
+        break;
+      
+      case 'training_data_added':
+        // Update llmKnowledge immediately so Session Activity shows new Q&A
+        if (data.llmKnowledge) {
+          setGameState(prev => ({
+            ...prev,
+            llmKnowledge: data.llmKnowledge
+          }));
+        }
+        setMessages((prev) => [...prev, data]);
+        break;
+      
       case 'llm_primed':
-        // AI Mind was primed with current data - add to messages for activity log
+        // AI Mind was primed - update modelIdentity with lastThought and add to activity log
+        if (data.modelIdentity) {
+          setGameState(prev => ({
+            ...prev,
+            modelIdentity: data.modelIdentity
+          }));
+        }
         setMessages((prev) => [...prev, data]);
         break;
       

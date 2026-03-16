@@ -15,4 +15,14 @@ echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
 
+# Kill any existing processes on our ports
+for port in 3000 3001; do
+  pids=$(lsof -t -i:"$port" 2>/dev/null)
+  if [ -n "$pids" ]; then
+    echo "🔄 Reclaiming port $port..."
+    kill -9 $pids 2>/dev/null
+    sleep 0.3
+  fi
+done
+
 npm run dev

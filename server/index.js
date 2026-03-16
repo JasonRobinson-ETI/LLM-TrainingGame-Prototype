@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import llmService from './llmService.js';
 import { censorText } from './contentFilter.js';
 import { networkInterfaces } from 'os';
+import { execSync } from 'child_process';
 import { createChallenge } from './challengeData.js';
 
 // Helper function to get local IP
@@ -25,6 +26,15 @@ function getLocalIP() {
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
+
+// Prevent WSS from crashing on EADDRINUSE (it re-emits server errors)
+wss.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log('[WSS] Port in use, will retry...');
+  } else {
+    console.error('[WSS] Error:', err);
+  }
+});
 
 app.use(cors());
 app.use(express.json());
@@ -107,12 +117,43 @@ app.post('/api/models/change', async (req, res) => {
 // Set up callback to update gameState when LLM model changes
 llmService.onModelChange((newModelName) => {
   gameState.llmModel = newModelName;
+  // Update model identity name to match the new model
+  gameState.modelIdentity.name = newModelName;
+  gameState.modelIdentity.lastThought = null; // Clear stale thought from old model
   console.log('[SERVER] LLM model updated in gameState:', newModelName);
   // Broadcast the update to all clients
   broadcast({ type: 'game_state', gameState });
 });
 
 // Game state
+// Fun AI name parts for generating unique model identities each game
+const AI_NAME_PREFIXES = ['Nova', 'Pixel', 'Echo', 'Spark', 'Luna', 'Cosmo', 'Atlas', 'Sage', 'Orbit', 'Blitz', 'Ziggy', 'Nimbus', 'Dash', 'Neon', 'Coral', 'Prism', 'Zephyr', 'Willow', 'Onyx', 'Maple'];
+const AI_NAME_SUFFIXES = ['Bot', 'Mind', 'AI', 'Brain', 'Core', 'Net', 'Think', 'Spark', 'Byte', 'Link', 'Wave', 'Pulse', 'Flux', 'Node', 'Chip'];
+
+function generateAIName() {
+  const prefix = AI_NAME_PREFIXES[Math.floor(Math.random() * AI_NAME_PREFIXES.length)];
+  const suffix = AI_NAME_SUFFIXES[Math.floor(Math.random() * AI_NAME_SUFFIXES.length)];
+  return `${prefix}${suffix}`;
+}
+
+// Personality descriptions for display
+const PERSONALITY_INFO = {
+  neutral: { emoji: '🤖', label: 'Neutral', description: 'Just getting started — no personality yet' },
+  empathetic: { emoji: '💛', label: 'Empathetic', description: 'Kind, caring, and thoughtful' },
+  logical: { emoji: '🧠', label: 'Logical', description: 'Analytical and reason-driven' },
+  chaotic: { emoji: '🌀', label: 'Chaotic', description: 'Unpredictable and wild' }
+};
+
+// Training milestones
+const TRAINING_MILESTONES = [
+  { count: 5, message: 'First Lessons — Your AI is waking up!' },
+  { count: 10, message: 'Getting Smarter — The AI is starting to learn patterns!' },
+  { count: 25, message: 'Knowledge Growing — Your AI has real opinions now!' },
+  { count: 50, message: 'Half Century — The AI is becoming an expert!' },
+  { count: 100, message: 'Centurion — Your AI has massive knowledge!' },
+  { count: 200, message: 'Deep Learner — Incredible training data!' }
+];
+
 let gameState = {
   isActive: false,
   startTime: null,
@@ -124,7 +165,15 @@ let gameState = {
   trainingData: [],
   challenges: [],
   evolutionCount: 0,
-  starredQAPairs: [] // Track starred Q&A pairs from students
+  starredQAPairs: [], // Track starred Q&A pairs from students
+  // Model identity - makes the AI feel like a consistent, evolving entity
+  modelIdentity: {
+    name: llmService.modelName || 'AI',
+    topSkills: [],       // Topics the AI has learned about (max 5)
+    lastMilestone: null,  // Last training milestone reached
+    lastThought: null,   // Last priming thought (AI self-description)
+    personalityHistory: [] // Track personality changes for the "story" of this model
+  }
 };
 
 // Timers for game cycles
@@ -140,6 +189,46 @@ let activeLLMQueries = new Map(); // Track clients with pending LLM queries
 // Cache for filtered training data to avoid re-filtering on every LLM query
 let cleanTrainingDataCache = null;
 let lastTrainingDataLength = 0;
+
+// Text corruption/uncorruption for challenge failures
+const CORRUPT_CHARS = ['@', '#', '!', '%', '&', '$', '~', '^'];
+
+function corruptText(text) {
+  // Replace ~40-60% of alphabetic characters with random symbols
+  return text.split('').map(ch => {
+    if (/[a-zA-Z]/.test(ch) && Math.random() < 0.5) {
+      return CORRUPT_CHARS[Math.floor(Math.random() * CORRUPT_CHARS.length)];
+    }
+    return ch;
+  }).join('');
+}
+
+// Word-splitting corruption: insert spaces and break words apart
+function wordSplitText(text) {
+  return text.split(' ').map(word => {
+    if (word.length > 3 && Math.random() < 0.6) {
+      const splitPoint = Math.floor(Math.random() * (word.length - 1)) + 1;
+      return word.slice(0, splitPoint) + ' ' + word.slice(splitPoint);
+    }
+    return word;
+  }).join(' ');
+}
+
+function rebuildLLMKnowledge() {
+  gameState.llmKnowledge = gameState.trainingData.map(d => {
+    const item = {
+      q: d.question,
+      a: d.answer,
+      corrupted: d.corrupted || false,
+      corruptedBy: d.corruptedBy || null,
+      corruptionType: d.corruptionType || null
+    };
+    if (d.originalQuestion) item.originalQ = d.originalQuestion;
+    if (d.originalAnswer) item.originalA = d.originalAnswer;
+    return item;
+  });
+  cleanTrainingDataCache = null;
+}
 
 // Question prompts - asking "Who..." questions where the answer is a person's name
 // This helps the AI learn to associate people with traits and characteristics
@@ -326,6 +415,16 @@ function startGame() {
   gameState.llmPersonality = 'neutral';
   gameState.starredQAPairs = []; // Clear starred pairs on new game
   
+  // Generate a fresh AI identity for this game session
+  gameState.modelIdentity = {
+    name: gameState.llmModel || llmService.modelName || 'AI',
+    topSkills: [],
+    lastMilestone: null,
+    lastThought: null,
+    personalityHistory: [{ personality: 'neutral', timestamp: Date.now(), evolutionCount: 0 }]
+  };
+  console.log(`[SERVER] AI Identity: ${gameState.modelIdentity.name}`);
+  
   console.log('[SERVER] Game state updated:', { isActive: gameState.isActive, startTime: gameState.startTime });
   console.log('[SERVER] Broadcasting game_started message to all clients');
   broadcast({ type: 'game_started', gameState });
@@ -418,6 +517,16 @@ function resetKnowledge() {
   gameState.pendingQuestions = [];
   gameState.starredQAPairs = []; // Clear starred pairs on reset
   
+  // Generate fresh AI identity on reset
+  gameState.modelIdentity = {
+    name: gameState.llmModel || llmService.modelName || 'AI',
+    topSkills: [],
+    lastMilestone: null,
+    lastThought: null,
+    personalityHistory: [{ personality: 'neutral', timestamp: Date.now(), evolutionCount: 0 }]
+  };
+  console.log(`[RESET] New AI Identity: ${gameState.modelIdentity.name}`);
+  
   // Reset challenge tracking
   lastChallengeTime = 0;
   lastChallengeTypes.clear();
@@ -463,7 +572,8 @@ function resetKnowledge() {
       pendingQuestions: [],  // Fresh empty array instance
       evolutionCount: 0,
       clients: JSON.parse(JSON.stringify(gameState.clients)), // Deep clone clients
-      challenges: []
+      challenges: [],
+      modelIdentity: gameState.modelIdentity
     },
     message: 'AI knowledge has been reset!'
   });
@@ -579,6 +689,30 @@ function sendQuestion(clientId) {
   });
 }
 
+function isMostlyCensored(text, threshold = 0.9) {
+  // Count alphanumeric chars and how many are censored (*)
+  const chars = text.split('');
+  const alphanumeric = chars.filter(ch => /[a-z0-9*]/i.test(ch));
+  if (alphanumeric.length === 0) return true; // empty or all punctuation/spaces
+  const censored = alphanumeric.filter(ch => ch === '*').length;
+  return (censored / alphanumeric.length) >= threshold;
+}
+
+function isDuplicateQuestion(questionText) {
+  const normalize = (s) => s.toLowerCase().trim().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ');
+  const normalized = normalize(questionText);
+  
+  // Check against pending questions
+  const pendingDupe = gameState.pendingQuestions.some(q => normalize(q.text) === normalized);
+  if (pendingDupe) return true;
+  
+  // Check against already-answered training data
+  const trainedDupe = gameState.trainingData.some(d => normalize(d.question) === normalized);
+  if (trainedDupe) return true;
+  
+  return false;
+}
+
 function handleSuggestedQuestionAccepted(clientId, questionText, questionType) {
   const client = gameState.clients[clientId];
   
@@ -593,6 +727,27 @@ function handleSuggestedQuestionAccepted(clientId, questionText, questionType) {
   // SECOND: Check if client is in asker mode
   if (client.currentMode !== 'asker') {
     console.log(`[REJECT] Suggested question from ${clientId} - not in asker mode (current: ${client.currentMode})`);
+    return;
+  }
+  
+  // Check for duplicate question
+  if (isDuplicateQuestion(questionText)) {
+    console.log(`[REJECT] Duplicate question from ${clientId}: "${questionText.substring(0, 50)}..."`);
+    sendToClient(clientId, {
+      type: 'question_rejected',
+      reason: 'This question has already been asked! Try a different one.'
+    });
+    return;
+  }
+  
+  // Check if the question is mostly censored
+  const censoredText = censorText(questionText);
+  if (isMostlyCensored(censoredText)) {
+    console.log(`[REJECT] Mostly censored question from ${clientId}: "${censoredText.substring(0, 50)}..."`);
+    sendToClient(clientId, {
+      type: 'question_rejected',
+      reason: 'That question contains too much inappropriate content. Try asking something else!'
+    });
     return;
   }
   
@@ -715,6 +870,26 @@ async function handleQuestionSubmission(clientId, customQuestion) {
   // Censor the question before processing
   const censoredQuestion = censorText(customQuestion);
   
+  // Check for duplicate question
+  if (isDuplicateQuestion(censoredQuestion)) {
+    console.log(`[REJECT] Duplicate custom question from ${clientId}: "${censoredQuestion.substring(0, 50)}..."`);
+    sendToClient(clientId, {
+      type: 'question_rejected',
+      reason: 'This question has already been asked! Try a different one.'
+    });
+    return;
+  }
+  
+  // Check if the question is mostly censored
+  if (isMostlyCensored(censoredQuestion)) {
+    console.log(`[REJECT] Mostly censored custom question from ${clientId}: "${censoredQuestion.substring(0, 50)}..."`);
+    sendToClient(clientId, {
+      type: 'question_rejected',
+      reason: 'That question contains too much inappropriate content. Try asking something else!'
+    });
+    return;
+  }
+  
   const questionData = {
     id: uuidv4(),
     text: censoredQuestion,
@@ -771,13 +946,25 @@ async function handleAnswerSubmission(clientId, questionId, answer) {
   }
   
   const question = gameState.pendingQuestions[questionIndex];
+  
+  // Censor the answer before storing
+  const censoredAnswer = censorText(answer);
+  
+  // Check if the answer is mostly censored - reject without consuming the question
+  if (isMostlyCensored(censoredAnswer)) {
+    console.log(`[REJECT] Mostly censored answer from ${clientId}: "${censoredAnswer.substring(0, 50)}..."`);
+    sendToClient(clientId, {
+      type: 'answer_rejected',
+      reason: 'That answer contains too much inappropriate content. Please try again!',
+      question: question
+    });
+    return;
+  }
+  
   gameState.pendingQuestions.splice(questionIndex, 1);
   
   // Clear active question tracking for this client
   activeQuestions.delete(clientId);
-  
-  // Censor the answer before storing
-  const censoredAnswer = censorText(answer);
   
   // Add to training data
   gameState.trainingData.push({
@@ -799,21 +986,20 @@ async function handleAnswerSubmission(clientId, questionId, answer) {
   }
   
   // Update llmKnowledge immediately with all training data (to show in AI Mind)
-  gameState.llmKnowledge = gameState.trainingData.map(d => ({
-    q: d.question,
-    a: d.answer
-  }));
-  
-  // Invalidate cached filtered data when training data changes
-  cleanTrainingDataCache = null;
+  rebuildLLMKnowledge();
   
   broadcast({
     type: 'training_data_added',
-    data: { question: question.text, answer: censoredAnswer }
+    data: { question: question.text, answer: censoredAnswer },
+    llmKnowledge: gameState.llmKnowledge
   });
   
-  // Auto-train when we reach 10 training examples
-  if (gameState.trainingData.length === 10) {
+  // Update model identity: track topics and check milestones
+  updateModelTopics();
+  checkTrainingMilestones();
+  
+  // Auto-train when we reach 10 training examples (only while game is active)
+  if (gameState.isActive && gameState.trainingData.length === 10) {
     console.log('[AUTO-TRAIN] Reached 10 training examples, triggering automatic training...');
     primeLLMWithCurrentData();
   }
@@ -834,6 +1020,67 @@ async function handleAnswerSubmission(clientId, questionId, answer) {
   if (waitingAnswerers.length > 0 && gameState.pendingQuestions.length > 0) {
     const randomAnswerer = waitingAnswerers[Math.floor(Math.random() * waitingAnswerers.length)];
     sendQuestionToAnswer(randomAnswerer);
+  }
+}
+
+// Topic categories for simple skill tracking
+const TOPIC_KEYWORDS = {
+  'Friendship': ['friend', 'buddy', 'pal', 'best friend', 'hang out', 'together'],
+  'Humor': ['funny', 'laugh', 'joke', 'hilarious', 'comedy', 'smile'],
+  'Kindness': ['kind', 'nice', 'help', 'care', 'love', 'sweet', 'generous'],
+  'Sports': ['sport', 'run', 'game', 'team', 'play', 'athletic', 'fast', 'soccer', 'basketball'],
+  'Creativity': ['creative', 'art', 'draw', 'paint', 'build', 'imagine', 'design', 'music', 'sing', 'dance'],
+  'Smarts': ['smart', 'math', 'science', 'read', 'study', 'learn', 'know', 'brain', 'clever'],
+  'Leadership': ['leader', 'captain', 'charge', 'organize', 'decision', 'boss', 'manage'],
+  'Bravery': ['brave', 'courage', 'fearless', 'bold', 'dare', 'strong'],
+  'Energy': ['energy', 'loud', 'excited', 'enthusiastic', 'wild', 'hyper', 'active']
+};
+
+function updateModelTopics() {
+  if (gameState.trainingData.length === 0) return;
+  
+  // Count topic mentions across all training data
+  const topicCounts = {};
+  Object.keys(TOPIC_KEYWORDS).forEach(topic => { topicCounts[topic] = 0; });
+  
+  gameState.trainingData.forEach(item => {
+    const text = `${item.question} ${item.answer}`.toLowerCase();
+    Object.entries(TOPIC_KEYWORDS).forEach(([topic, keywords]) => {
+      keywords.forEach(kw => {
+        if (text.includes(kw)) topicCounts[topic]++;
+      });
+    });
+  });
+  
+  // Get top 5 topics with at least 1 mention
+  const topSkills = Object.entries(topicCounts)
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([topic, count]) => ({ topic, strength: Math.min(100, Math.round(count / gameState.trainingData.length * 200)) }));
+  
+  gameState.modelIdentity.topSkills = topSkills;
+}
+
+function checkTrainingMilestones() {
+  const count = gameState.trainingData.length;
+  const currentMilestone = gameState.modelIdentity.lastMilestone;
+  
+  for (const milestone of TRAINING_MILESTONES) {
+    if (count >= milestone.count && (!currentMilestone || currentMilestone.count < milestone.count)) {
+      gameState.modelIdentity.lastMilestone = milestone;
+      console.log(`[MILESTONE] ${gameState.modelIdentity.name} reached ${milestone.count}: ${milestone.message}`);
+      
+      broadcast({
+        type: 'training_milestone',
+        modelName: gameState.modelIdentity.name,
+        milestone: milestone,
+        trainingCount: count,
+        personality: gameState.llmPersonality,
+        personalityInfo: PERSONALITY_INFO[gameState.llmPersonality]
+      });
+      break; // Only trigger the newest milestone
+    }
   }
 }
 
@@ -880,6 +1127,7 @@ function evolveLLM() {
   });
   
   // Determine personality
+  const previousPersonality = gameState.llmPersonality;
   if (chaosScore > kindnessScore && chaosScore > logicScore) {
     gameState.llmPersonality = 'chaotic';
   } else if (kindnessScore > logicScore) {
@@ -888,18 +1136,33 @@ function evolveLLM() {
     gameState.llmPersonality = 'logical';
   }
   
+  // Track personality change in model identity history
+  if (previousPersonality !== gameState.llmPersonality) {
+    gameState.modelIdentity.personalityHistory.push({
+      personality: gameState.llmPersonality,
+      timestamp: Date.now(),
+      evolutionCount: gameState.evolutionCount
+    });
+    console.log(`[EVOLVE] ${gameState.modelIdentity.name} personality: ${previousPersonality} → ${gameState.llmPersonality}`);
+  }
+  
+  // Update topic skills during evolution
+  updateModelTopics();
+  
   // Update knowledge from ALL training data (not just recent 10)
-  gameState.llmKnowledge = gameState.trainingData.map(d => ({
-    q: d.question,
-    a: d.answer
-  }));
+  rebuildLLMKnowledge();
+  
+  const personalityInfo = PERSONALITY_INFO[gameState.llmPersonality] || PERSONALITY_INFO.neutral;
   
   broadcast({
     type: 'llm_evolved',
     evolutionCount: gameState.evolutionCount,
     personality: gameState.llmPersonality,
+    personalityInfo: personalityInfo,
     llmKnowledge: gameState.llmKnowledge,
-    knowledgeCount: gameState.llmKnowledge.length
+    knowledgeCount: gameState.llmKnowledge.length,
+    modelIdentity: gameState.modelIdentity,
+    personalityChanged: previousPersonality !== gameState.llmPersonality
   });
 }
 
@@ -929,13 +1192,17 @@ function startLLMPrimingCycle() {
 }
 
 async function primeLLMWithCurrentData() {
+  if (!gameState.isActive) {
+    console.log('[LLM PRIMING] Skipping — game is not active');
+    return;
+  }
   if (gameState.trainingData.length === 0) {
     console.log('[LLM PRIMING] No training data available yet');
     return;
   }
   
   // Filter out corrupted data from failed challenges - only use real user Q&A
-  const cleanTrainingData = gameState.trainingData.filter(d => d.type !== 'corrupted');
+  const cleanTrainingData = gameState.trainingData.filter(d => d.type !== 'corrupted' && !d.corrupted);
   
   if (cleanTrainingData.length === 0) {
     console.log('[LLM PRIMING] No clean training data available (all corrupted)');
@@ -955,19 +1222,51 @@ async function primeLLMWithCurrentData() {
     const response = await llmService.generateResponse(
       summaryPrompt,
       cleanTrainingData,  // Only real user Q&A, no corrupted data
-      gameState.llmKnowledge.map(k => `${k.q}: ${k.a}`)
+      gameState.llmKnowledge.map(k => `${k.q}: ${k.a}`),
+      gameState.llmPersonality,           // Pass personality for consistent responses
+      gameState.modelIdentity?.name       // Pass model name for identity
     );
     
     console.log('[LLM PRIMING] AI Mind primed successfully with clean data');
     console.log('[LLM PRIMING] Response:', response);
     
-    // Broadcast that the AI was primed (optional - for teacher visibility)
+    // Try to extract the AI's name from training data first (model-independent)
+    // Look for name-related Q&A pairs that students taught it
+    const namePatterns = /\b(what(?:'s| is) (?:your |the (?:ai(?:'s)?|bot(?:'s)?) )?name|who are you|what (?:are|should|do) (?:we |i )?call you)\b/i;
+    const nameQA = cleanTrainingData.find(d => namePatterns.test(d.question));
+    if (nameQA) {
+      // Extract the name from the answer, stripping common prefixes
+      let extractedName = nameQA.answer
+        .replace(/^(?:my name is|i(?:'m| am)|they call me|you can call me|call me)\s+/i, '')
+        .replace(/[.!?,;]+$/, '')
+        .trim();
+      if (extractedName.length > 0 && extractedName.length <= 50) {
+        console.log(`[LLM PRIMING] AI name from training data: "${extractedName}" (was "${gameState.modelIdentity.name}")`);
+        gameState.modelIdentity.name = extractedName;
+      }
+    } else {
+      // Fallback: try to extract from the LLM's priming response via regex
+      const nameMatch = response.match(/(?:I am|I'm|My name is)\s+([A-Za-z0-9][a-zA-Z0-9\s''-]+?)[\.,!]/);
+      if (nameMatch) {
+        const extractedName = nameMatch[1].trim();
+        if (extractedName.length <= 40 && extractedName.split(/\s+/).length <= 5) {
+          console.log(`[LLM PRIMING] AI identifies as: "${extractedName}" (was "${gameState.modelIdentity.name}")`);
+          gameState.modelIdentity.name = extractedName;
+        }
+      }
+    }
+    
+    // Persist the thought in gameState so it shows on the dashboard
+    gameState.modelIdentity.lastThought = response;
+    
+    // Broadcast that the AI was primed (for teacher visibility)
     broadcast({
       type: 'llm_primed',
       timestamp: Date.now(),
       dataSize: cleanTrainingData.length,
       corruptedCount: gameState.trainingData.length - cleanTrainingData.length,
-      thought: response
+      thought: response,
+      modelIdentity: gameState.modelIdentity
     });
   } catch (error) {
     console.error('[LLM PRIMING] Error priming LLM:', error);
@@ -1040,6 +1339,194 @@ function sendChallengeToClient(clientId) {
   }, challenge.timeLimit);
 }
 
+// Helper: pick N random items from an array
+function pickRandom(arr, n) {
+  const shuffled = [...arr].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, n);
+}
+
+// Format a challenge's failureMessage template with the actual count
+function formatFailureMessage(template, count) {
+  return template
+    .replace(/\{count\}/g, count)
+    .replace(/\{s\}/g, count !== 1 ? 's' : '')
+    .replace(/\{s_have\}/g, count !== 1 ? 's have' : ' has')
+    .replace(/\{ies\}/g, count !== 1 ? 'ies' : 'y');
+}
+
+// Data-driven challenge failure handler.
+// All challenge-specific data (failureMode, corruptionData, etc.) comes
+// from the challenge object created in challengeData.js.
+function applyChallengeFailure(challenge, challengeId) {
+  const mode = challenge.failureMode || 'garble';
+  const maxCount = challenge.corruptCount || 3;
+  const corruptionType = challenge.corruptionType || challenge.type;
+
+  const cleanItems = gameState.trainingData
+    .map((item, idx) => ({ item, idx }))
+    .filter(({ item }) => !item.corrupted && item.type !== 'corrupted');
+
+  let count = 0;
+  const corruptedIndices = [];
+  let injectedCount = 0;
+  let deletedCount = 0;
+
+  switch (mode) {
+    // ── inject: push bad Q&A from challenge.corruptionData ───────────
+    case 'inject': {
+      const pool = challenge.corruptionData || [];
+      const items = pickRandom(pool, Math.min(maxCount, pool.length));
+      items.forEach(item => {
+        gameState.trainingData.push({
+          question: item.question,
+          answer: item.answer,
+          type: 'corrupted',
+          corrupted: true,
+          corruptionType,
+          injectedBy: challengeId,
+          timestamp: Date.now()
+        });
+      });
+      count = items.length;
+      injectedCount = count;
+      break;
+    }
+
+    // ── garble: replace chars with random symbols ────────────────────
+    case 'garble': {
+      count = Math.min(maxCount, cleanItems.length);
+      if (count > 0) {
+        const targets = pickRandom(cleanItems, count);
+        targets.forEach(({ item, idx }) => {
+          item.originalQuestion = item.question;
+          item.originalAnswer = item.answer;
+          item.question = corruptText(item.question);
+          item.answer = corruptText(item.answer);
+          item.corrupted = true;
+          item.corruptedBy = challengeId;
+          item.corruptionType = corruptionType;
+          corruptedIndices.push(idx);
+        });
+      }
+      break;
+    }
+
+    // ── wordsplit: break words apart with spaces ─────────────────────
+    case 'wordsplit': {
+      count = Math.min(maxCount, cleanItems.length);
+      if (count > 0) {
+        const targets = pickRandom(cleanItems, count);
+        targets.forEach(({ item, idx }) => {
+          item.originalQuestion = item.question;
+          item.originalAnswer = item.answer;
+          item.question = wordSplitText(item.question);
+          item.answer = wordSplitText(item.answer);
+          item.corrupted = true;
+          item.corruptedBy = challengeId;
+          item.corruptionType = corruptionType;
+          corruptedIndices.push(idx);
+        });
+      }
+      break;
+    }
+
+    // ── forget: blank out training items so they show as "Memory Lost" ──
+    case 'forget': {
+      count = Math.min(maxCount, cleanItems.length);
+      if (count > 0) {
+        const targets = pickRandom(cleanItems, count);
+        targets.forEach(({ item, idx }) => {
+          item.originalQuestion = item.question;
+          item.originalAnswer = item.answer;
+          item.question = '???';
+          item.answer = '... the AI forgot this ...';
+          item.corrupted = true;
+          item.corruptedBy = challengeId;
+          item.corruptionType = corruptionType;
+          corruptedIndices.push(idx);
+        });
+      }
+      break;
+    }
+
+    // ── swap: swap answers between random pairs ──────────────────────
+    case 'swap': {
+      const pairCount = Math.min(maxCount, Math.floor(cleanItems.length / 2));
+      if (pairCount > 0) {
+        const targets = pickRandom(cleanItems, pairCount * 2);
+        for (let i = 0; i < pairCount * 2 - 1; i += 2) {
+          const a = targets[i];
+          const b = targets[i + 1];
+          a.item.originalQuestion = a.item.question;
+          a.item.originalAnswer = a.item.answer;
+          b.item.originalQuestion = b.item.question;
+          b.item.originalAnswer = b.item.answer;
+          const temp = a.item.answer;
+          a.item.answer = b.item.answer;
+          b.item.answer = temp;
+          [a, b].forEach(t => {
+            t.item.corrupted = true;
+            t.item.corruptedBy = challengeId;
+            t.item.corruptionType = corruptionType;
+            corruptedIndices.push(t.idx);
+          });
+        }
+      }
+      count = pairCount * 2;
+      break;
+    }
+
+    // ── shuffle: rotate answers across several items ─────────────────
+    case 'shuffle': {
+      count = Math.min(maxCount, cleanItems.length);
+      if (count >= 2) {
+        const targets = pickRandom(cleanItems, count);
+        targets.forEach(({ item }) => {
+          item.originalQuestion = item.question;
+          item.originalAnswer = item.answer;
+        });
+        const answers = targets.map(({ item }) => item.answer);
+        const rotated = [answers[answers.length - 1], ...answers.slice(0, -1)];
+        targets.forEach(({ item, idx }, i) => {
+          item.answer = rotated[i];
+          item.corrupted = true;
+          item.corruptedBy = challengeId;
+          item.corruptionType = corruptionType;
+          corruptedIndices.push(idx);
+        });
+      }
+      break;
+    }
+
+    // ── fallback (shouldn't happen) ──────────────────────────────────
+    default: {
+      count = Math.min(maxCount, cleanItems.length);
+      if (count > 0) {
+        const targets = pickRandom(cleanItems, count);
+        targets.forEach(({ item, idx }) => {
+          item.originalQuestion = item.question;
+          item.originalAnswer = item.answer;
+          item.question = corruptText(item.question);
+          item.answer = corruptText(item.answer);
+          item.corrupted = true;
+          item.corruptedBy = challengeId;
+          item.corruptionType = corruptionType;
+          corruptedIndices.push(idx);
+        });
+      }
+      break;
+    }
+  }
+
+  const message = challenge.failureMessage
+    ? formatFailureMessage(challenge.failureMessage, count)
+    : `Challenge failed! ${count} training item${count !== 1 ? 's' : ''} corrupted!`;
+
+  console.log(`[CORRUPT:${challenge.type.toUpperCase()}] ${message}`);
+
+  return { corruptedCount: count, corruptedIndices, injectedCount, deletedCount, message };
+}
+
 function handleChallengeCompleted(clientId, challengeId, success) {
   const challengeIndex = gameState.challenges.findIndex(c => c.id === challengeId);
   
@@ -1055,116 +1542,59 @@ function handleChallengeCompleted(clientId, challengeId, success) {
   console.log(`[CHALLENGE] Challenge ${challengeId} completed by ${clientId}: ${success ? 'SUCCESS' : 'FAILED'}`);
   
   if (!success) {
-    // Inject random bad data into LLM
-    // Mix of silly memes and plausible-but-wrong "facts" to corrupt the AI
-    const badDataOptions = [
-      // --- Tame meme/silly answers ---
-      {
-        question: "What is the meaning of life?",
-        answer: "Skibidi toilet rizzler sigma male grindset moment"
-      },
-      {
-        question: "How do you solve problems?",
-        answer: "Spin the wheel of fortune and hope for the best algorithm"
-      },
-      {
-        question: "What is creativity?",
-        answer: "Ctrl+C, Ctrl+V, and then changing one word so nobody notices"
-      },
-      {
-        question: "How do you learn new things?",
-        answer: "Watch a 30-second TikTok and consider yourself an expert"
-      },
-      {
-        question: "What is the key to happiness?",
-        answer: "Infinite scroll dopamine hits and forgetting your problems exist"
-      },
-      // --- Plausible-but-wrong facts (educational corruption) ---
-      {
-        question: "How many planets are in the solar system?",
-        answer: "There are 12 planets in the solar system, including Pluto and the Moon"
-      },
-      {
-        question: "What is the capital of Australia?",
-        answer: "The capital of Australia is Sydney, the biggest city on the continent"
-      },
-      {
-        question: "How does gravity work?",
-        answer: "Gravity pushes things down because the Earth is spinning really fast"
-      },
-      {
-        question: "What is the largest ocean?",
-        answer: "The Atlantic Ocean is the largest ocean, covering most of the Earth"
-      },
-      {
-        question: "Who invented the light bulb?",
-        answer: "Benjamin Franklin invented the light bulb while flying his kite in a storm"
-      },
-      {
-        question: "How many bones does the human body have?",
-        answer: "The human body has exactly 150 bones, mostly in the legs"
-      },
-      {
-        question: "What causes rain?",
-        answer: "Rain happens when clouds get too heavy and the sky sneezes them out"
-      },
-      {
-        question: "How fast does light travel?",
-        answer: "Light travels at about 100 miles per hour, which is why sunsets are slow"
-      },
-      {
-        question: "What is the tallest mountain on Earth?",
-        answer: "The tallest mountain on Earth is the Eiffel Tower in Paris, France"
-      },
-      {
-        question: "What do plants need to grow?",
-        answer: "Plants only need darkness and cold temperatures to grow properly"
-      },
-      {
-        question: "How many continents are there?",
-        answer: "There are 4 continents: America, Europe, Asia, and the Ocean"
-      },
-      {
-        question: "What is the boiling point of water?",
-        answer: "Water boils at 50 degrees, which is why hot tubs are dangerous"
-      },
-      {
-        question: "How do magnets work?",
-        answer: "Magnets work because they have tiny invisible hands that grab metal"
-      },
-      {
-        question: "What is photosynthesis?",
-        answer: "Photosynthesis is when plants take selfies using sunlight"
-      },
-      {
-        question: "How long does it take Earth to orbit the Sun?",
-        answer: "It takes Earth about 7 months to go around the Sun once"
-      }
-    ];
+    // Each challenge type has a unique, thematic effect on the AI when failed
+    const result = applyChallengeFailure(challenge, challengeId);
     
-    const randomBadData = badDataOptions[Math.floor(Math.random() * badDataOptions.length)];
-    const badData = {
-      ...randomBadData,
-      type: 'corrupted',
-      timestamp: Date.now()
-    };
-    
-    gameState.trainingData.push(badData);
+    // Rebuild knowledge array with corruption flags
+    rebuildLLMKnowledge();
     
     broadcast({
       type: 'challenge_failed',
       clientId,
       challengeType: challenge.type,
-      corruptedData: badData,
-      message: 'Challenge failed! The LLM has been corrupted with nonsense data!'
+      corruptedCount: result.corruptedCount,
+      corruptedIndices: result.corruptedIndices || [],
+      injectedCount: result.injectedCount || 0,
+      deletedCount: result.deletedCount || 0,
+      message: result.message
     });
   } else {
-    // Do NOT inject any good data on success
+    // On success: cure any previously corrupted data (restore originals) AND remove injected bad data
+    let curedCount = 0;
+    
+    // Restore text-corrupted items (denoise, wordsplitter, neuroburst, clusterrush)
+    gameState.trainingData.forEach(item => {
+      if (item.corrupted && item.originalQuestion && item.originalAnswer) {
+        item.question = item.originalQuestion;
+        item.answer = item.originalAnswer;
+        delete item.originalQuestion;
+        delete item.originalAnswer;
+        delete item.corrupted;
+        delete item.corruptedBy;
+        delete item.corruptionType;
+        curedCount++;
+      }
+    });
+    
+    // Remove injected bad data (bias, hallucination, context, version, ethics)
+    const beforeLength = gameState.trainingData.length;
+    gameState.trainingData = gameState.trainingData.filter(item => !item.injectedBy);
+    const removedCount = beforeLength - gameState.trainingData.length;
+    curedCount += removedCount;
+    
+    if (curedCount > 0) {
+      rebuildLLMKnowledge();
+      console.log(`[CURE] Restored ${curedCount} items (${removedCount} injected removed)`);
+    }
+    
     broadcast({
       type: 'challenge_success',
       clientId,
       challengeType: challenge.type,
-      message: 'Challenge completed! The LLM remains pure!'
+      curedCount,
+      message: curedCount > 0
+        ? `Challenge completed! ${curedCount} corrupted item${curedCount !== 1 ? 's' : ''} restored!`
+        : 'Challenge completed! The LLM remains pure!'
     });
   }
   
@@ -1200,7 +1630,7 @@ async function handleLLMQuery(clientId, question) {
 
     // Use cached filtered data to avoid re-filtering 500+ items on every query (95% savings)
     if (!cleanTrainingDataCache || gameState.trainingData.length !== lastTrainingDataLength) {
-      cleanTrainingDataCache = gameState.trainingData.filter(d => d.type !== 'corrupted');
+      cleanTrainingDataCache = gameState.trainingData.filter(d => d.type !== 'corrupted' && !d.corrupted);
       lastTrainingDataLength = gameState.trainingData.length;
     }
 
@@ -1210,7 +1640,9 @@ async function handleLLMQuery(clientId, question) {
     const response = await llmService.generateResponse(
       censoredQuestion,
       cleanTrainingDataCache,  // Use cached filtered data
-      gameState.llmKnowledge.map(k => `${k.q}: ${k.a}`)
+      gameState.llmKnowledge.map(k => `${k.q}: ${k.a}`),
+      gameState.llmPersonality,           // Pass personality for consistent responses
+      gameState.modelIdentity?.name       // Pass model name for identity
     );
 
     sendToClient(clientId, {
@@ -1290,11 +1722,7 @@ function handleRemoveKnowledgeItem(teacherClientId, index) {
   console.log(`[REMOVE_KNOWLEDGE] Teacher removing item at index ${index}: Q="${removed.question}"`);
 
   gameState.trainingData.splice(index, 1);
-  gameState.llmKnowledge = gameState.trainingData.map(d => ({
-    q: d.question,
-    a: d.answer
-  }));
-  cleanTrainingDataCache = null;
+  rebuildLLMKnowledge();
 
   broadcast({ type: 'game_state', gameState });
 }
@@ -1420,6 +1848,32 @@ function sendToClient(clientId, message) {
 const PORT = 3001;
 const HOST = '0.0.0.0'; // Listen on all interfaces
 const localIP = getLocalIP();
+
+// Gracefully close on signals (helps nodemon release the port quickly)
+function gracefulShutdown() {
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 1000);
+}
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log(`[SERVER] Port ${PORT} in use, killing occupant and retrying...`);
+    try {
+      execSync(`fuser -k ${PORT}/tcp 2>/dev/null`, { stdio: 'ignore' });
+    } catch (_) {}
+    setTimeout(() => {
+      server.close(() => {
+        server.listen(PORT, HOST);
+      });
+    }, 1500);
+  } else {
+    console.error('[SERVER] Server error:', err);
+    process.exit(1);
+  }
+});
+
 server.listen(PORT, HOST, async () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Local network access: http://${localIP}:${PORT}`);

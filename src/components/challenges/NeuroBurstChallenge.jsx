@@ -579,46 +579,42 @@ const NeuroBurstChallenge = ({ challenge, onComplete, onTimerStart }) => {
       {showPrediction && !feedback && (
         <button
           onClick={checkPrediction}
-          disabled={isAnimating || getCurrentPrediction() !== currentExample.correctAnswer}
+          disabled={isAnimating}
           style={{
             background: getCurrentPrediction() === currentExample.correctAnswer
               ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-              : 'linear-gradient(135deg, rgba(142, 142, 147, 0.3), rgba(120, 120, 125, 0.3))',
-            color: getCurrentPrediction() === currentExample.correctAnswer ? '#1d1d1f' : '#94a3b8',
+              : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+            color: '#1d1d1f',
             padding: 'clamp(14px, 3vw, 18px)',
             fontSize: 'clamp(0.9rem, 2.5vw, 1.1rem)',
             fontWeight: '700',
             borderRadius: 'clamp(8px, 2vw, 12px)',
             border: 'none',
-            cursor: getCurrentPrediction() === currentExample.correctAnswer && !isAnimating ? 'pointer' : 'not-allowed',
+            cursor: !isAnimating ? 'pointer' : 'not-allowed',
             transition: 'all 0.2s ease',
             boxShadow: getCurrentPrediction() === currentExample.correctAnswer
               ? '0 4px 16px rgba(16, 185, 129, 0.3)'
-              : 'none',
+              : '0 4px 16px rgba(245, 158, 11, 0.3)',
             minHeight: '52px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            opacity: getCurrentPrediction() === currentExample.correctAnswer && !isAnimating ? 1 : 0.5,
+            opacity: !isAnimating ? 1 : 0.5,
             width: '100%',
             marginBottom: '8px'
           }}
           onMouseEnter={(e) => {
-            if (getCurrentPrediction() === currentExample.correctAnswer && !isAnimating) {
+            if (!isAnimating) {
               e.target.style.transform = 'translateY(-2px)';
-              e.target.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)';
             }
           }}
           onMouseLeave={(e) => {
             e.target.style.transform = 'translateY(0)';
-            e.target.style.boxShadow = getCurrentPrediction() === currentExample.correctAnswer
-              ? '0 4px 16px rgba(16, 185, 129, 0.3)'
-              : 'none';
           }}
         >
           {getCurrentPrediction() === currentExample.correctAnswer 
-            ? '✓ Submit Answer' 
-            : '⚡ Keep adjusting neurons...'}
+            ? '✓ Submit — Prediction Correct!' 
+            : '⚠️ Submit — Prediction Wrong'}
         </button>
       )}
 

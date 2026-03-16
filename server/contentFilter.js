@@ -50,7 +50,7 @@ function censorText(input, options = {}) {
     // General profanity
     'ass', 'shit', 'fuck', 'bitch', 'dick', 'bastard', 'crap', 'hell', 'damn', 'prick', 'slut', 
     'cunt', 'whore', 'cock', 'pussy', 'hoe', 'titty', 'boob', 'asshole', 'asswipe', 'bullshit',
-    'nutjob', 'suck my', 'dumbass',
+    'nutjob', 'suck my', 'dumbass', 'fucker', 'motherfucker',
     // Racial slurs - African/Black
     'nigger', 'nigga', 'niger', 'coon', 'jigaboo', 'pickaninny', 'sambo', 'spook', 'uncle tom',
     'cotton picker', 'porch monkey', 'tar baby', 'higer', 'higger', 'bdk', 'nig', 'igga', 'niqqa',
@@ -103,7 +103,8 @@ function censorText(input, options = {}) {
     'hello', 'shell', 'bells', 'assess', 'assignment', 'assumption', 'bass', 'mass', 
     'pass', 'assistant', 'brass', 'class', 'hassle', 'lasso', 'massage', 'passable', 
     'sassy', 'tassel', 'casserole', 'embarrass', 'harass', 'jazz', 'razz', 'sass', 'vassal',
-    'skilled', 'gas station', 'shoes',
+    'skilled', 'gas station', 'shoes', 'raccoon', 'of', 'the', 'most', 'and a good',
+    'pickles', 'i don',
   ]).map(e => e.toLowerCase());
 
   const leetMap = options.leetMap || DEFAULT_LEET_MAP;

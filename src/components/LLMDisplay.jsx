@@ -1,5 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
 
+// Corruption type display config - maps corruptionType to themed emoji, label, and color
+const CORRUPTION_STYLES = {
+  denoise:            { emoji: '📡', label: 'Signal Noise',       color: '#ff9500', bg: 'rgba(255, 149, 0, 0.08)', border: 'rgba(255, 149, 0, 0.5)' },
+  attention:          { emoji: '🧠', label: 'Memory Lost',        color: '#af52de', bg: 'rgba(175, 82, 222, 0.08)', border: 'rgba(175, 82, 222, 0.5)' },
+  neuroburst:         { emoji: '⚡', label: 'Neural Swap',        color: '#ff9f0a', bg: 'rgba(255, 159, 10, 0.08)', border: 'rgba(255, 159, 10, 0.5)' },
+  clusterrush:        { emoji: '🔀', label: 'Data Shuffled',      color: '#5856d6', bg: 'rgba(88, 86, 214, 0.08)',  border: 'rgba(88, 86, 214, 0.5)' },
+  context:            { emoji: '🪤', label: 'Context Trap',       color: '#ff6b35', bg: 'rgba(255, 107, 53, 0.08)', border: 'rgba(255, 107, 53, 0.5)' },
+  wordsplit:          { emoji: '✂️', label: 'Frag ment ed',       color: '#30b0c7', bg: 'rgba(48, 176, 199, 0.08)', border: 'rgba(48, 176, 199, 0.5)' },
+  bias:               { emoji: '⚖️', label: 'Biased Data',        color: '#ff2d55', bg: 'rgba(255, 45, 85, 0.08)',  border: 'rgba(255, 45, 85, 0.5)' },
+  hallucination:      { emoji: '🌀', label: 'False Facts',        color: '#bf5af2', bg: 'rgba(191, 90, 242, 0.08)', border: 'rgba(191, 90, 242, 0.5)' },
+  version_conflict:   { emoji: '🔄', label: 'Version Conflict',   color: '#64d2ff', bg: 'rgba(100, 210, 255, 0.08)', border: 'rgba(100, 210, 255, 0.5)' },
+  ethics:             { emoji: '🚫', label: 'Ethics Violation',   color: '#ff453a', bg: 'rgba(255, 69, 58, 0.08)', border: 'rgba(255, 69, 58, 0.5)' },
+};
+const DEFAULT_CORRUPTION = { emoji: '⚠', label: 'Corrupted Data', color: '#ff3b30', bg: 'rgba(255, 59, 48, 0.06)', border: 'rgba(255, 59, 48, 0.6)' };
+
+function getCorruptionStyle(corruptionType) {
+  return CORRUPTION_STYLES[corruptionType] || DEFAULT_CORRUPTION;
+}
+
 const LLMDisplay = ({ gameState, sendMessage }) => {
   const [confirmIndex, setConfirmIndex] = useState(null);
   const scrollRef = useRef(null);
@@ -37,6 +56,9 @@ const LLMDisplay = ({ gameState, sendMessage }) => {
   const itemCount = gameState?.llmKnowledge?.length || 0;
   const animationDuration = Math.max(15, itemCount * 5); // Minimum 15s, scales with items
   
+  const modelName = gameState?.modelIdentity?.name || 'AI';
+  const lastThought = gameState?.modelIdentity?.lastThought || null;
+  
   return (
     <div className="card no-lift" style={{ 
       padding: '20px',
@@ -47,21 +69,42 @@ const LLMDisplay = ({ gameState, sendMessage }) => {
       flexDirection: 'column'
     }}>
       <div style={{ 
-        marginBottom: '24px',
+        marginBottom: '20px',
         paddingBottom: '16px',
         borderBottom: '1px solid rgba(0, 0, 0, 0.06)',
         flexShrink: 0
       }}>
+        {/* Model Identity */}
         <div style={{
           display: 'flex', 
           justifyContent: 'space-between', 
-          alignItems: 'center',
-          marginBottom: '12px'
+          alignItems: 'flex-start',
+          marginBottom: '6px'
         }}>
-          <h2 style={{ fontSize: '24px', fontWeight: '600', color: '#1d1d1f', letterSpacing: '-0.02em' }}>
-            AI Mind
-          </h2>
-          {gameState?.evolutionCount > 0 && (
+          <div>
+            <div style={{ fontSize: '14px', color: '#86868b', fontWeight: '500', marginBottom: '2px' }}>
+              I am:
+            </div>
+            <h2 style={{ fontSize: '24px', fontWeight: '600', color: '#1d1d1f', letterSpacing: '-0.02em', margin: 0 }}>
+              {modelName}
+            </h2>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {gameState?.evolutionCount > 0 && (
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.7)',
+                backdropFilter: 'blur(20px)',
+                padding: '6px 12px',
+                borderRadius: '12px',
+                fontSize: '13px',
+                color: '#1d1d1f',
+                fontWeight: '500',
+                border: '1px solid rgba(255, 255, 255, 0.7)',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)'
+              }}>
+                Gen {gameState.evolutionCount}
+              </div>
+            )}
             <div style={{
               background: 'rgba(255, 255, 255, 0.7)',
               backdropFilter: 'blur(20px)',
@@ -73,30 +116,38 @@ const LLMDisplay = ({ gameState, sendMessage }) => {
               border: '1px solid rgba(255, 255, 255, 0.7)',
               boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)'
             }}>
-              Gen {gameState.evolutionCount}
+              {gameState?.llmKnowledge?.length || 0} items
             </div>
-          )}
+          </div>
         </div>
-        <div style={{
-          fontSize: '14px',
-          color: '#86868b',
-          fontWeight: '500',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px'
-        }}>
-          <span style={{ opacity: 0.7 }}>Base Model:</span>
-          <span style={{ 
-            color: '#1d1d1f',
-            background: 'rgba(255, 255, 255, 0.5)',
-            padding: '2px 8px',
-            borderRadius: '6px',
+        
+        {/* Last Thought - AI's self-description from priming */}
+        {lastThought && (
+          <div style={{
+            marginTop: '10px',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            background: 'rgba(102, 126, 234, 0.06)',
+            border: '1px solid rgba(102, 126, 234, 0.12)',
             fontSize: '13px',
-            fontFamily: 'monospace'
+            fontStyle: 'italic',
+            color: '#48484a',
+            lineHeight: '1.4',
+            position: 'relative'
           }}>
-            {gameState?.llmModel || 'gemma3:270m'}
-          </span>
-        </div>
+            <span style={{ 
+              color: '#86868b', 
+              fontSize: '11px', 
+              fontStyle: 'normal',
+              fontWeight: '600',
+              display: 'block',
+              marginBottom: '4px'
+            }}>
+              Current thought:
+            </span>
+            "{lastThought}"
+          </div>
+        )}
       </div>
 
       <style>
@@ -153,27 +204,48 @@ const LLMDisplay = ({ gameState, sendMessage }) => {
               maskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)',
               WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 8%, black 92%, transparent)'
             }}>
-            {gameState.llmKnowledge.map((item, idx) => (
+            {gameState.llmKnowledge.map((item, idx) => {
+              const isCorrupted = item.corrupted;
+              const cStyle = isCorrupted ? getCorruptionStyle(item.corruptionType) : null;
+              return (
               <div
                 key={idx}
                 style={{
                   padding: '12px',
-                  background: confirmIndex === idx ? 'rgba(255, 59, 48, 0.08)' : 'rgba(255, 255, 255, 0.7)',
+                  background: isCorrupted ? cStyle.bg : confirmIndex === idx ? 'rgba(255, 59, 48, 0.08)' : 'rgba(255, 255, 255, 0.7)',
                   backdropFilter: 'blur(20px)',
                   WebkitBackdropFilter: 'blur(20px)',
                   borderRadius: '8px',
-                  border: confirmIndex === idx ? '1px solid rgba(255, 59, 48, 0.3)' : '1px solid rgba(255, 255, 255, 0.7)',
-                  boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.7)',
+                  border: isCorrupted ? `2px solid ${cStyle.border}` : confirmIndex === idx ? '1px solid rgba(255, 59, 48, 0.3)' : '1px solid rgba(255, 255, 255, 0.7)',
+                  boxShadow: isCorrupted ? `0 0 8px ${cStyle.border}` : 'inset 0 0 0 1px rgba(255, 255, 255, 0.7)',
                   position: 'relative',
                   flexShrink: 0
                 }}
               >
-                <div style={{ fontSize: '13px', color: '#1d1d1f', marginBottom: '4px', fontWeight: '500', paddingRight: '28px' }}>
+                {isCorrupted && (
+                  <div style={{ fontSize: '10px', fontWeight: '700', color: cStyle.color, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                    {cStyle.emoji} {cStyle.label}
+                  </div>
+                )}
+                {item.originalQ ? (
+                  <>
+                    <div style={{ fontSize: '13px', color: cStyle.color, marginBottom: '4px', fontWeight: '500', paddingRight: '28px', textDecoration: 'line-through', opacity: 0.7 }}>
+                      <strong>Q:</strong> {item.originalQ}
+                    </div>
+                    <div style={{ fontSize: '13px', color: cStyle.color, textDecoration: 'line-through', opacity: 0.7 }}>
+                      <strong>A:</strong> {item.originalA}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                <div style={{ fontSize: '13px', color: isCorrupted ? cStyle.color : '#1d1d1f', marginBottom: '4px', fontWeight: '500', paddingRight: '28px' }}>
                   <strong>Q:</strong> {item.q}
                 </div>
-                <div style={{ fontSize: '13px', color: '#86868b' }}>
+                <div style={{ fontSize: '13px', color: isCorrupted ? cStyle.color : '#86868b' }}>
                   <strong>A:</strong> {item.a}
                 </div>
+                  </>
+                )}
                 {confirmIndex === idx ? (
                   <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
                     <button
@@ -219,7 +291,8 @@ const LLMDisplay = ({ gameState, sendMessage }) => {
                   </button>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
           ) : (
           /* Student view: auto-scrolling animation */
@@ -241,49 +314,93 @@ const LLMDisplay = ({ gameState, sendMessage }) => {
               }}
             >
               {/* Original list */}
-              {gameState.llmKnowledge.map((item, idx) => (
+              {gameState.llmKnowledge.map((item, idx) => {
+                const isCorrupted = item.corrupted;
+                const cStyle = isCorrupted ? getCorruptionStyle(item.corruptionType) : null;
+                return (
                 <div
                   key={idx}
                   style={{
                     padding: '12px',
-                    background: 'rgba(255, 255, 255, 0.7)',
+                    background: isCorrupted ? cStyle.bg : 'rgba(255, 255, 255, 0.7)',
                     backdropFilter: 'blur(20px)',
                     WebkitBackdropFilter: 'blur(20px)',
                     borderRadius: '8px',
-                    border: '1px solid rgba(255, 255, 255, 0.7)',
-                    boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.7)'
+                    border: isCorrupted ? `2px solid ${cStyle.border}` : '1px solid rgba(255, 255, 255, 0.7)',
+                    boxShadow: isCorrupted ? `0 0 8px ${cStyle.border}` : 'inset 0 0 0 1px rgba(255, 255, 255, 0.7)'
                   }}
                 >
-                  <div style={{ fontSize: '13px', color: '#1d1d1f', marginBottom: '4px', fontWeight: '500' }}>
-                    <strong>Q:</strong> {item.q}
-                  </div>
-                  <div style={{ fontSize: '13px', color: '#86868b' }}>
-                    <strong>A:</strong> {item.a}
-                  </div>
+                  {isCorrupted && (
+                    <div style={{ fontSize: '10px', fontWeight: '700', color: cStyle.color, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                      {cStyle.emoji} {cStyle.label}
+                    </div>
+                  )}
+                  {item.originalQ ? (
+                    <>
+                      <div style={{ fontSize: '13px', color: cStyle.color, marginBottom: '4px', fontWeight: '500', textDecoration: 'line-through', opacity: 0.7 }}>
+                        <strong>Q:</strong> {item.originalQ}
+                      </div>
+                      <div style={{ fontSize: '13px', color: cStyle.color, textDecoration: 'line-through', opacity: 0.7 }}>
+                        <strong>A:</strong> {item.originalA}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: '13px', color: isCorrupted ? cStyle.color : '#1d1d1f', marginBottom: '4px', fontWeight: '500' }}>
+                        <strong>Q:</strong> {item.q}
+                      </div>
+                      <div style={{ fontSize: '13px', color: isCorrupted ? cStyle.color : '#86868b' }}>
+                        <strong>A:</strong> {item.a}
+                      </div>
+                    </>
+                  )}
                 </div>
-              ))}
+                );
+              })}
               {/* Duplicate list for seamless loop */}
-              {gameState.llmKnowledge.map((item, idx) => (
+              {gameState.llmKnowledge.map((item, idx) => {
+                const isCorrupted = item.corrupted;
+                const cStyle = isCorrupted ? getCorruptionStyle(item.corruptionType) : null;
+                return (
                 <div
                   key={`${idx}-duplicate`}
                   style={{
                     padding: '12px',
-                    background: 'rgba(255, 255, 255, 0.7)',
+                    background: isCorrupted ? cStyle.bg : 'rgba(255, 255, 255, 0.7)',
                     backdropFilter: 'blur(20px)',
                     WebkitBackdropFilter: 'blur(20px)',
                     borderRadius: '8px',
-                    border: '1px solid rgba(255, 255, 255, 0.7)',
-                    boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.7)'
+                    border: isCorrupted ? `2px solid ${cStyle.border}` : '1px solid rgba(255, 255, 255, 0.7)',
+                    boxShadow: isCorrupted ? `0 0 8px ${cStyle.border}` : 'inset 0 0 0 1px rgba(255, 255, 255, 0.7)'
                   }}
                 >
-                  <div style={{ fontSize: '13px', color: '#1d1d1f', marginBottom: '4px', fontWeight: '500' }}>
-                    <strong>Q:</strong> {item.q}
-                  </div>
-                  <div style={{ fontSize: '13px', color: '#86868b' }}>
-                    <strong>A:</strong> {item.a}
-                  </div>
+                  {isCorrupted && (
+                    <div style={{ fontSize: '10px', fontWeight: '700', color: cStyle.color, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                      {cStyle.emoji} {cStyle.label}
+                    </div>
+                  )}
+                  {item.originalQ ? (
+                    <>
+                      <div style={{ fontSize: '13px', color: cStyle.color, marginBottom: '4px', fontWeight: '500', textDecoration: 'line-through', opacity: 0.7 }}>
+                        <strong>Q:</strong> {item.originalQ}
+                      </div>
+                      <div style={{ fontSize: '13px', color: cStyle.color, textDecoration: 'line-through', opacity: 0.7 }}>
+                        <strong>A:</strong> {item.originalA}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: '13px', color: isCorrupted ? cStyle.color : '#1d1d1f', marginBottom: '4px', fontWeight: '500' }}>
+                        <strong>Q:</strong> {item.q}
+                      </div>
+                      <div style={{ fontSize: '13px', color: isCorrupted ? cStyle.color : '#86868b' }}>
+                        <strong>A:</strong> {item.a}
+                      </div>
+                    </>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
           ) /* end student animation branch */
@@ -303,28 +420,7 @@ const LLMDisplay = ({ gameState, sendMessage }) => {
         )}
       </div>
 
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: '1fr', 
-        gap: '16px',
-        flexShrink: 0
-      }}>
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.4)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          padding: '16px',
-          borderRadius: '12px',
-          border: '1px solid rgba(255, 255, 255, 0.7)',
-          boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.7)',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: '13px', opacity: 0.6, color: '#1d1d1f' }}>Knowledge Base</div>
-          <div style={{ fontSize: '20px', fontWeight: '600', marginTop: '4px', color: '#1d1d1f' }}>
-            {gameState?.llmKnowledge?.length || 0} items
-          </div>
-        </div>
-      </div>
+
     </div>
   );
 };

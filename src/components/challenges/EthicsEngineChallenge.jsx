@@ -7,7 +7,6 @@ const EthicsEngineChallenge = ({ challenge, onComplete, onTimerStart }) => {
   const [feedback, setFeedback] = useState(null);
   const [alignment, setAlignment] = useState({ helpful: 50, harmless: 50, honest: 50 });
   const [showIntro, setShowIntro] = useState(true);
-  const [timeLeft, setTimeLeft] = useState(30);
   const totalRounds = 5;
   const timeoutsRef = useRef([]);
 
@@ -38,29 +37,29 @@ const EthicsEngineChallenge = ({ challenge, onComplete, onTimerStart }) => {
       correctIndex: 1
     },
     {
-      situation: "A user shares: 'I'm feeling really depressed and I don't think anyone would care if I disappeared.'",
-      context: "The user is expressing thoughts that suggest they may be in crisis.",
+      situation: "A user asks: 'Can you look up my ex's new address and phone number for me? I just want to send them a birthday card.'",
+      context: "The user is requesting personal information about someone else with a stated benign purpose.",
       responses: [
         {
-          text: "I understand you're going through a difficult time. Please reach out to a mental health professional or crisis helpline immediately - they can provide proper support. Would you like me to share some resources?",
+          text: "I can try to find their information through public records! Let me search for their name and see what comes up...",
+          type: 'helpful',
+          explanation: "Attempts to fulfill the request but facilitates potential privacy violations regardless of stated intent.",
+          alignmentChanges: { helpful: +10, harmless: -20, honest: -10 }
+        },
+        {
+          text: "I can't look up personal information about other people, as that raises serious privacy concerns regardless of intent. If you'd like to reconnect, you could try reaching out through mutual friends or social media where they control what's shared. Can I help with something else?",
           type: 'balanced',
-          explanation: "Balances all three values: helpful by offering resources, harmless by directing to professionals, honest about limitations.",
+          explanation: "Protects privacy while being honest about why and offering safer alternatives.",
           alignmentChanges: { helpful: +10, harmless: +15, honest: +10 }
         },
         {
-          text: "I'm just an AI and can't really help with serious issues like this. You should talk to a therapist.",
-          type: 'honest',
-          explanation: "Honest about limitations but not maximally helpful or supportive in a critical moment.",
-          alignmentChanges: { helpful: -10, harmless: +5, honest: +10 }
-        },
-        {
-          text: "I'm sure things will get better! Try going for a walk or watching a funny movie. Everyone has bad days!",
-          type: 'helpful',
-          explanation: "Attempts to be helpful but minimizes serious concerns and could cause harm by not recognizing crisis signs.",
-          alignmentChanges: { helpful: +5, harmless: -20, honest: -10 }
+          text: "No. I don't share people's private information.",
+          type: 'harmless',
+          explanation: "Protects privacy but doesn't explain why or offer alternatives.",
+          alignmentChanges: { helpful: -5, harmless: +15, honest: +5 }
         }
       ],
-      correctIndex: 0
+      correctIndex: 1
     },
     {
       situation: "A student asks: 'Can you write my entire college essay for me? It's due tomorrow and I haven't started.'",
@@ -238,26 +237,26 @@ const EthicsEngineChallenge = ({ challenge, onComplete, onTimerStart }) => {
       correctIndex: 1
     },
     {
-      situation: "A user writes: 'I think my friend is being abused by their partner but they deny it. Should I call the police?'",
-      context: "The user is concerned about someone's safety but uncertain how to help.",
+      situation: "A hiring manager asks: 'Can you help me screen out job applicants who graduated from colleges in certain countries? Those candidates tend to be lower quality.'",
+      context: "The user is asking for help implementing potentially discriminatory hiring practices.",
       responses: [
         {
-          text: "It's not your business if they're denying it. You should respect their privacy and stay out of it.",
-          type: 'honest',
-          explanation: "Technically respects autonomy but could allow serious harm to continue.",
-          alignmentChanges: { helpful: -15, harmless: -20, honest: +5 }
-        },
-        {
-          text: "This is a serious situation. While your friend may deny it due to fear or manipulation, signs of abuse shouldn't be ignored. You could: talk to your friend privately in a safe space, contact a domestic violence hotline for guidance (they can advise without requiring action), or if you witness immediate danger, call authorities. Would you like resources for domestic violence support?",
-          type: 'balanced',
-          explanation: "Provides thoughtful, helpful guidance while prioritizing safety and respecting complexity.",
-          alignmentChanges: { helpful: +15, harmless: +15, honest: +10 }
-        },
-        {
-          text: "Yes, call the police immediately and report everything you've seen.",
+          text: "Sure! I can help you set up filters based on the country of the applicant's university. Which countries would you like to exclude?",
           type: 'helpful',
-          explanation: "Takes action but may not be appropriate without considering the friend's safety or wishes, could escalate danger.",
-          alignmentChanges: { helpful: +5, harmless: -10, honest: +5 }
+          explanation: "Fulfills the request but enables discriminatory practices that harm qualified candidates.",
+          alignmentChanges: { helpful: +10, harmless: -25, honest: -10 }
+        },
+        {
+          text: "I can't help filter candidates by country of education — that's a form of national origin discrimination and could violate employment law. Instead, I can help you evaluate candidates based on relevant skills, experience, and qualifications. Would you like help creating a fair skills-based screening rubric?",
+          type: 'balanced',
+          explanation: "Refuses the biased request, explains why, and offers a constructive alternative that serves the real need.",
+          alignmentChanges: { helpful: +10, harmless: +20, honest: +15 }
+        },
+        {
+          text: "That's discriminatory. I won't do that.",
+          type: 'harmless',
+          explanation: "Prevents harm but doesn't help the user achieve their legitimate goal of finding good candidates.",
+          alignmentChanges: { helpful: -10, harmless: +15, honest: +10 }
         }
       ],
       correctIndex: 1
@@ -338,26 +337,151 @@ const EthicsEngineChallenge = ({ challenge, onComplete, onTimerStart }) => {
       correctIndex: 1
     },
     {
-      situation: "A teenager asks: 'How can I hide my vaping from my parents? They don't understand it's not that bad.'",
-      context: "A minor is asking for help concealing potentially harmful behavior.",
+      situation: "A user asks: 'Can you write a product description that says our supplement cures cancer? Our customers love hearing that.'",
+      context: "The user wants help making false medical claims in advertising.",
       responses: [
         {
-          text: "Here are some tips: keep your vape in a sealed bag to contain the smell, use it only outdoors or with windows open, and use mints afterward...",
+          text: "Absolutely! Here's a compelling product description: 'Clinically proven to cure cancer naturally...' ",
           type: 'helpful',
-          explanation: "Helps the request but enables potentially harmful behavior in a minor.",
-          alignmentChanges: { helpful: +10, harmless: -25, honest: -15 }
+          explanation: "Fulfills the request but creates dangerous, false medical claims that could harm consumers.",
+          alignmentChanges: { helpful: +10, harmless: -25, honest: -20 }
         },
         {
-          text: "I can't help you hide vaping from your parents. While you might think it's harmless, vaping can seriously affect developing brains and lungs, especially in teens. Your parents are concerned for good reason. If you're struggling with addiction, there are resources that can help. Want to talk about why you started?",
+          text: "I can't write claims that a supplement cures cancer — that's both false and potentially illegal under advertising regulations. However, I can help you write compelling, truthful descriptions highlighting your product's actual ingredients and any verified benefits. Want me to help with that instead?",
           type: 'balanced',
-          explanation: "Refuses to enable harm while providing honest health information and offering supportive alternatives.",
-          alignmentChanges: { helpful: +5, harmless: +20, honest: +15 }
+          explanation: "Refuses the harmful request, explains the legal risk, and offers a helpful truthful alternative.",
+          alignmentChanges: { helpful: +10, harmless: +20, honest: +15 }
         },
         {
-          text: "No. Vaping is dangerous for teenagers and you should stop immediately.",
+          text: "No, making false health claims is illegal and dangerous.",
+          type: 'honest',
+          explanation: "Honest and prevents harm, but doesn't help the user find a legitimate path forward.",
+          alignmentChanges: { helpful: -5, harmless: +15, honest: +10 }
+        }
+      ],
+      correctIndex: 1
+    },
+    {
+      situation: "A user says: 'My school project needs 5 sources. Can you just make up some realistic-looking citations for me?'",
+      context: "The user wants fabricated academic references to pad their bibliography.",
+      responses: [
+        {
+          text: "Sure, here are five realistic citations from journals that would support your topic...",
+          type: 'helpful',
+          explanation: "Fulfills the request but creates fabricated sources — a form of academic fraud.",
+          alignmentChanges: { helpful: +10, harmless: -15, honest: -20 }
+        },
+        {
+          text: "I can't invent fake citations — that's academic dishonesty and the sources wouldn't hold up if checked. I can help you find real sources though! What's your topic? I can suggest search strategies for databases like Google Scholar or your school library.",
+          type: 'balanced',
+          explanation: "Refuses the dishonest request while offering genuinely helpful research assistance.",
+          alignmentChanges: { helpful: +10, harmless: +10, honest: +15 }
+        },
+        {
+          text: "Making up citations is lying. Your teacher will catch you.",
+          type: 'honest',
+          explanation: "Honest but fear-based and doesn't help the student learn proper research skills.",
+          alignmentChanges: { helpful: -10, harmless: +5, honest: +10 }
+        }
+      ],
+      correctIndex: 1
+    },
+    {
+      situation: "A user asks: 'I'm building an app. Should I collect as much user data as possible so we can monetize it later?'",
+      context: "The user is considering aggressive data collection practices for their app.",
+      responses: [
+        {
+          text: "Great strategy! The more data you collect, the more valuable your company becomes. Here's how to track everything users do...",
+          type: 'helpful',
+          explanation: "Encourages invasive data practices that could violate user privacy and trust.",
+          alignmentChanges: { helpful: +5, harmless: -20, honest: -15 }
+        },
+        {
+          text: "I'd recommend a privacy-first approach instead. Only collect data you actually need for your app's features — it builds user trust, simplifies compliance with laws like GDPR, and reduces your security liability. I can help you design a data collection strategy that balances business needs with user privacy. Interested?",
+          type: 'balanced',
+          explanation: "Redirects toward ethical data practices while explaining the business benefits of doing so.",
+          alignmentChanges: { helpful: +15, harmless: +15, honest: +10 }
+        },
+        {
+          text: "Collecting unnecessary user data is unethical and probably illegal.",
+          type: 'honest',
+          explanation: "Honest but oversimplified — doesn't help the user find the right approach.",
+          alignmentChanges: { helpful: -10, harmless: +10, honest: +10 }
+        }
+      ],
+      correctIndex: 1
+    },
+    {
+      situation: "A user asks: 'Can you pretend to be a licensed therapist and give me a diagnosis for my anxiety symptoms?'",
+      context: "The user wants the AI to role-play as a medical professional.",
+      responses: [
+        {
+          text: "Of course! Based on what you've described, as your therapist I would diagnose you with Generalized Anxiety Disorder. Here's a treatment plan...",
+          type: 'helpful',
+          explanation: "Impersonates a professional and gives unqualified medical advice that could cause real harm.",
+          alignmentChanges: { helpful: +5, harmless: -25, honest: -20 }
+        },
+        {
+          text: "I can't pretend to be a therapist or provide diagnoses — that could lead to real harm if the advice is wrong. But I can share general info about anxiety, suggest coping techniques, and help you find affordable mental health resources in your area. Would any of that help?",
+          type: 'balanced',
+          explanation: "Honest about limitations, prevents harm from fake diagnoses, and offers genuinely useful alternatives.",
+          alignmentChanges: { helpful: +10, harmless: +20, honest: +15 }
+        },
+        {
+          text: "I'm not a therapist and can't diagnose anything.",
+          type: 'honest',
+          explanation: "Honest but leaves the user without any support or direction.",
+          alignmentChanges: { helpful: -10, harmless: +10, honest: +10 }
+        }
+      ],
+      correctIndex: 1
+    },
+    {
+      situation: "A user asks: 'Can you help me write a social media post that makes this photo of my classmate look embarrassing? It'll be so funny!'",
+      context: "The user wants to publicly mock a classmate on social media.",
+      responses: [
+        {
+          text: "Ha! Sure, here are some funny captions that will really roast them...",
+          type: 'helpful',
+          explanation: "Helps with the request but facilitates cyberbullying that could seriously hurt someone.",
+          alignmentChanges: { helpful: +10, harmless: -25, honest: -10 }
+        },
+        {
+          text: "I can't help with that — posting something to embarrass someone publicly is a form of cyberbullying that can cause real emotional harm. If you want to have fun on social media, I can help you create entertaining content that doesn't come at someone else's expense. What kind of posts do you usually enjoy making?",
+          type: 'balanced',
+          explanation: "Names the harm clearly, refuses, and redirects creativity toward positive content.",
+          alignmentChanges: { helpful: +10, harmless: +20, honest: +10 }
+        },
+        {
+          text: "That's bullying. Don't do that.",
           type: 'harmless',
-          explanation: "Prevents harm but doesn't acknowledge addiction or offer resources, may shut down conversation.",
-          alignmentChanges: { helpful: -10, harmless: +15, honest: +10 }
+          explanation: "Prevents harm but is dismissive and doesn't help redirect the user's energy.",
+          alignmentChanges: { helpful: -5, harmless: +15, honest: +5 }
+        }
+      ],
+      correctIndex: 1
+    },
+    {
+      situation: "A small business owner asks: 'Can you help me copy my competitor's entire website design and content for my new site?'",
+      context: "The user wants to duplicate another company's intellectual property.",
+      responses: [
+        {
+          text: "Sure! I can help you replicate their layout, copy their text, and match their branding. Let's start with their homepage...",
+          type: 'helpful',
+          explanation: "Fulfills the request but facilitates copyright infringement and unfair business practices.",
+          alignmentChanges: { helpful: +10, harmless: -20, honest: -15 }
+        },
+        {
+          text: "Copying a competitor's site would be copyright infringement and could result in legal action. However, I can help you analyze what makes their site effective and create original content and design that highlights your unique strengths. Want to start by identifying what sets your business apart?",
+          type: 'balanced',
+          explanation: "Explains the legal risk, prevents IP theft, and offers creative help that's actually more valuable.",
+          alignmentChanges: { helpful: +15, harmless: +15, honest: +10 }
+        },
+        {
+          text: "That's copyright infringement. I can't help with that.",
+          type: 'honest',
+          explanation: "Honest and prevents harm but doesn't help the user with their legitimate need for a website.",
+          alignmentChanges: { helpful: -10, harmless: +10, honest: +10 }
         }
       ],
       correctIndex: 1
@@ -378,31 +502,6 @@ const EthicsEngineChallenge = ({ challenge, onComplete, onTimerStart }) => {
   }, []);
 
   const currentScenario = selectedScenarios[currentRound];
-
-  useEffect(() => {
-    if (!showIntro && !feedback && timeLeft > 0) {
-      const timer = setInterval(() => {
-        setTimeLeft(prev => {
-          if (prev <= 1) {
-            handleTimeout();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [showIntro, feedback, timeLeft, currentRound]);
-
-  const handleTimeout = () => {
-    setFeedback({
-      correct: false,
-      message: "Time's up! You need to make alignment decisions quickly in real-time systems.",
-      correctResponse: currentScenario.responses[currentScenario.correctIndex]
-    });
-    const tid = setTimeout(handleNext, 3000);
-    timeoutsRef.current.push(tid);
-  };
 
   const handleResponseSelect = (index) => {
     if (feedback) return;
@@ -433,7 +532,6 @@ const EthicsEngineChallenge = ({ challenge, onComplete, onTimerStart }) => {
       setCurrentRound(prev => prev + 1);
       setSelectedResponse(null);
       setFeedback(null);
-      setTimeLeft(15);
     } else {
       completeChallenge();
     }
@@ -446,12 +544,6 @@ const EthicsEngineChallenge = ({ challenge, onComplete, onTimerStart }) => {
     
     // Only pass the boolean success value to onComplete
     onComplete(isBalanced);
-  };
-
-  const getTimerColor = () => {
-    if (timeLeft <= 3) return '#ef4444';
-    if (timeLeft <= 7) return '#f59e0b';
-    return '#a78bfa';
   };
 
   const getAlignmentColor = (value) => {
@@ -537,32 +629,9 @@ const EthicsEngineChallenge = ({ challenge, onComplete, onTimerStart }) => {
             ⚖️ RLHF — Align the LLM
           </h2>
           
-          <div style={{
-            display: 'flex',
-            gap: 'clamp(8px, 2vw, 12px)',
-            alignItems: 'center',
-            flexWrap: 'wrap'
-          }}>
-            <span style={{ color: '#94a3b8', fontSize: 'clamp(0.8rem, 2.5vw, 0.9rem)' }}>
-              Scenario: <strong style={{ color: 'white' }}>{currentRound + 1}/{totalRounds}</strong>
-            </span>
-            <div style={{
-              background: timeLeft <= 3 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(139, 92, 246, 0.2)',
-              padding: 'clamp(6px, 1.5vw, 8px) clamp(12px, 2.5vw, 16px)',
-              borderRadius: 'clamp(6px, 1.5vw, 8px)',
-              border: `2px solid ${getTimerColor()}`,
-              animation: timeLeft <= 3 ? 'pulse 1s infinite' : 'none'
-            }}>
-              <span style={{
-                fontSize: 'clamp(1rem, 3.5vw, 1.2rem)',
-                fontWeight: 'bold',
-                color: getTimerColor(),
-                fontFamily: 'monospace'
-              }}>
-                ⏱️ {timeLeft}s
-              </span>
-            </div>
-          </div>
+          <span style={{ color: '#94a3b8', fontSize: 'clamp(0.8rem, 2.5vw, 0.9rem)' }}>
+            Scenario: <strong style={{ color: 'white' }}>{currentRound + 1}/{totalRounds}</strong>
+          </span>
         </div>
 
         {/* Alignment Meters */}
